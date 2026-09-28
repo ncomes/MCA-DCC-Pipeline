@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mca-launcher"
+version = "3.0.0"
+description = "Picks a DCC, builds its environment, installs what it needs, and starts it with the MCA pipeline on the path."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Nathan Comes" }]
+keywords = ["maya", "motionbuilder", "unreal", "pipeline", "launcher", "rigging"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+
+# The launcher's own needs, and only its own. The dependencies a DCC needs are
+# mca-common's business: the launcher reads that list and installs it per DCC
+# version, and never declares it here.
+dependencies = [
+    "PySide6>=6.5",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# yamlordereddictloader is only needed to read a file back in its original key
+# order, which nothing in the launcher requires. Kept available for the older
+# preference files that were written with it.
+ordered = ["yamlordereddictloader>=0.4"]
+
+[project.scripts]
+mca-launcher = "mca.launcher.cli:main"
+
+[project.gui-scripts]
+mca-launcher-ui = "mca.launcher.cli:main_gui"
+
+[project.urls]
+Homepage = "https://github.com/ncomes/MCA-DCC-Pipeline"
+Source = "https://github.com/ncomes/MCA-DCC-Pipeline"
+
+[tool.setuptools.packages.find]
+include = ["mca*"]
+
+[tool.setuptools.package-data]
+"mca.launcher" = ["resources/**/*", "*.yaml", "*.ico"]

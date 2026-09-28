@@ -1,0 +1,13 @@
+# What the framework's package loader needs to know about this one.
+#
+# Nothing project-specific belongs here. The old file named a project ('Cryptid'), listed
+# Maya versions that were already wrong, and pointed `commands` at a boot.py that does not
+# exist - all three of which are the kind of thing that only surfaces on somebody else's
+# machine.
+name: 'mca-launcher'
+displayName: 'Launcher'
+description: 'Starts a DCC with the MCA pipeline on its path, and installs what that DCC needs first.'
+version: '3.0.0'
+environment:
+  PYTHONPATH:
+    - '{self}'

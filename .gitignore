@@ -1,0 +1,61 @@
+# --- Python ---------------------------------------------------------------- #
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.venv/
+venv/
+
+# --- Build output ---------------------------------------------------------- #
+#
+# Native plug-ins are built per Maya version. The .mll is committed, because an
+# artist cannot build one; everything the compiler leaves beside it is not. The
+# .pdb files alone run 33-43 MB each.
+build/
+dist/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.map
+*.idb
+*.iobj
+*.ipdb
+*.tlog
+*.log
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.vcxproj
+*.vcxproj.*
+*.sln
+*.suo
+
+# --- Installed dependencies never belong in the repo ----------------------- #
+#
+# They are installed per DCC version, with that DCC's own interpreter, into
+# %LOCALAPPDATA%\MCA\deps. Anything that lands in the tree is an accident.
+deps/
+packages/*/mca/*/startup/dependencies/python3*/
+packages/*/mca/*/startup/dependencies/*-20*/
+
+# --- DCC and editor droppings ---------------------------------------------- #
+*.mayaSwatches/
+*.swatches
+*.ma.bak
+*.mb.bak
+mayaLog
+.idea/
+.vs/
+*.user
+
+# --- Local session and preference state ------------------------------------ #
+.mca-session*.json
+.mca-project
+
+# --- OS -------------------------------------------------------------------- #
+Thumbs.db
+desktop.ini
+.DS_Store
