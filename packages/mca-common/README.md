@@ -24,7 +24,8 @@ Each piece lands finished rather than copied and marked for later.
 | `paths/paths.py`, `utils/dcc_util.py` | ported, 24 checks |
 | `resources/` | ported, 22 checks — the art itself stays out, see `resources/README.md` |
 | `pyqt/common_windows.py`, `messages.py`, `file_dialogs.py` | ported, 26 checks |
-| `pyqt/` (movies, syntax highlighter, widget helpers) | next |
+| `pyqt/` (menus, movies, highlighter, widget helpers) | ported, 29 checks — **pyqt done** |
+| `utils/` (15 modules) | next |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
@@ -258,6 +259,21 @@ In the dialogs, the one that loses work: **`text_prompt_message` returned the ty
 the artist pressed Cancel**, because it compared the result to `'Cancel'` while the button's
 label is `'&Cancel'`. An error box also offered Yes and Cancel, and every message box's
 stylesheet was overwritten by two one-line rules applied straight after it.
+
+## The rest of pyqt
+
+`syntax_highlighter.py` came across almost unchanged — it is the most careful module in the
+package — with one line that had to move: `color_format(color: Sequence[int] | str, ...)`.
+`X | Y` in an annotation is Python 3.10 and later, and an annotation is evaluated when the
+function is defined, so **that module could not be imported in Maya 2022 at all**.
+`from __future__ import annotations` fixes it back to 3.7 and leaves the annotations as
+written.
+
+In `qt_menus`, `remove_action` had its `return False` **inside** the loop, so it looked at
+the first action, and if that was not the one being asked for it gave up — every action after
+the first was unremovable. It also logged to a logger of its own (`'mca_common'`, not the
+framework's), so its messages went somewhere else and ignored `MCA_LOGGING_LEVEL`, and a
+window with no menu bar crashed it.
 
 ## Tests
 
