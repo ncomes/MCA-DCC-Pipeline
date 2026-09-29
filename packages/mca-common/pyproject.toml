@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mca-common"
+version = "3.0.0"
+description = "What every DCC in the MCA pipeline shares: logging, paths, file formats, preferences and the start-up that puts the framework on a DCC's path."
+readme = "README.md"
+requires-python = ">=3.7"
+license = "MIT"
+authors = [{ name = "Nathan Comes" }]
+keywords = ["maya", "motionbuilder", "unreal", "pipeline", "rigging"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+
+# Python 3.7 is the floor because Maya 2022 is 3.7.7, and mca-common has to import there.
+# Qt is never listed: every DCC ships its own, and a second one on sys.path is an abort with
+# no traceback.
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ncomes/MCA-DCC-Pipeline"
+Source = "https://github.com/ncomes/MCA-DCC-Pipeline"
+
+[tool.setuptools.packages.find]
+include = ["mca*"]
+
+[tool.setuptools.package-data]
+"mca.common" = ["resources/**/*", "startup/**/*", "*.yaml"]

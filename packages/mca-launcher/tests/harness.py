@@ -97,7 +97,8 @@ class Suite(object):
             'error': error,
             'ok': not self.failures and not error,
         }
-        path = os.path.join(tempfile.gettempdir(), 'mca_launcher_{}.json'.format(self.name))
+        path = os.path.join(tempfile.gettempdir(),
+                        'mca_{}_{}.json'.format(package_name(), self.name))
         try:
             with open(path, 'w', encoding='utf-8') as opened:
                 json.dump(results, opened, indent=1, default=str)
@@ -118,6 +119,17 @@ class Suite(object):
             print('  temp kept: {}'.format(self.temp))
 
         return 0 if results['ok'] else 1
+
+
+def package_name():
+    """
+    :return: Which package these suites belong to, worked out from where they are - so the
+        results file of one does not overwrite the other's.
+    :rtype: str
+    """
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.basename(root).replace('-', '_') or 'mca'
 
 
 def add_package_to_path():
