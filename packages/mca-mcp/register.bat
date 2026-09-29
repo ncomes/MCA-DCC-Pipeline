@@ -59,6 +59,18 @@ where claude >nul 2>nul || (
 
 claude mcp add MCAMaya --scope user --env "PYTHONPATH=%HERE%;%LAUNCHER%" -- "%PYTHON%" -m mca.mcp.maya.server
 echo.
+echo NOTE: that registers with Claude Code. A desktop app reads its own config -
+echo usually %%APPDATA%%\Claude\claude_desktop_config.json - and needs this under
+echo "mcpServers" instead:
+echo.
+echo   "MCAMaya": {
+echo     "command": "%PYTHON:\=\\%",
+echo     "args": ["-m", "mca.mcp.maya.server"],
+echo     "env": { "PYTHONPATH": "%HERE:\=\\%;%LAUNCHER:\=\\%" }
+echo   }
+echo.
+echo Restart the client after either one.
+echo.
 echo Registered. Restart the MCP client so it picks the server up.
 endlocal
 pause
