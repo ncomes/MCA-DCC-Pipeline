@@ -357,6 +357,10 @@ class ProjectBar(QWidget):
     ``path_box.png`` is a dark plate with a highlight along the top: the old launcher put the
     project controls on it, and without it the row floats on the background with nothing
     holding it together.
+
+    The plate is redrawn to the bar's own width every time the bar changes size. Drawn once
+    at the window's starting width instead, the buttons walk off the right-hand end of it the
+    moment the window is widened - the layout stretches, a fixed pixmap does not.
     """
 
     def __init__(self, parent=None):
@@ -364,17 +368,15 @@ class ProjectBar(QWidget):
 
         self.setFixedHeight(style.BAR_HEIGHT)
 
+        image = resources.image('path_box.png')
+        self.art = QPixmap(image) if image else None
         self.plate = QLabel(self)
-        plate = resources.image('path_box.png')
-        if plate:
-            self.plate.setPixmap(QPixmap(plate).scaled(
-                style.WINDOW_WIDTH - 24, style.BAR_HEIGHT,
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation))
-        self.plate.setGeometry(0, 0, style.WINDOW_WIDTH - 24, style.BAR_HEIGHT)
+        self.plate.lower()
+        self._draw_plate()
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 4, 14, 4)
+        # The plate's art has a bevel down each side; the controls keep clear of it.
+        layout.setContentsMargins(18, 4, 24, 4)
         layout.setSpacing(8)
 
         label = QLabel('Project')
@@ -404,6 +406,25 @@ class ProjectBar(QWidget):
         self.remove_button.setObjectName('remove_project_pushButton')
         self.remove_button.setFixedWidth(80)
         layout.addWidget(self.remove_button)
+
+    def resizeEvent(self, event):
+        """
+        :param event: The resize event. The plate follows the bar, whatever it becomes.
+        """
+
+        super().resizeEvent(event)
+        self._draw_plate()
+
+    def _draw_plate(self):
+        """Stretch the art across whatever width the bar has now."""
+
+        width = max(self.width(), 1)
+        height = max(self.height(), 1)
+        self.plate.setGeometry(0, 0, width, height)
+        if self.art and not self.art.isNull():
+            self.plate.setPixmap(self.art.scaled(
+                width, height, Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
 
     def set_projects(self, names, current=''):
         """

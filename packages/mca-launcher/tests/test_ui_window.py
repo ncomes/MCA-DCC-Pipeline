@@ -270,6 +270,21 @@ def body(suite):
             PretendDcc.here = ('2024', '2025')
             main.refresh()
 
+        # -- the plate under the project row follows the window -------- #
+        # It used to be drawn once at the starting width, so widening the window walked the
+        # Add / Edit / Remove buttons off the end of it.
+        main.resize(1200, 700)
+        main.project_bar.resize(main.project_bar.width(), main.project_bar.height())
+        application.processEvents()
+        bar = main.project_bar
+        suite.check('the project plate is as wide as the bar it is under',
+                    bar.plate.width() == bar.width(),
+                    '{} vs {}'.format(bar.plate.width(), bar.width()))
+        suite.check('and the buttons on it are still inside it',
+                    bar.remove_button.geometry().right() <= bar.plate.geometry().right(),
+                    '{} vs {}'.format(bar.remove_button.geometry().right(),
+                                      bar.plate.geometry().right()))
+
         # -- the menu ------------------------------------------------- #
         shown['tell'] = []
         main._check_dependencies()
