@@ -1,0 +1,35 @@
+# What this package is, and what it puts in the environment.
+#
+# {self} is the folder this file sits in, so a package can say where its own things are
+# without knowing where it was installed.
+#
+# The urls are deliberately empty: the ones in the version this replaces pointed at a
+# previous employer's internal wiki, which cannot ship in an open repository. Fill them in
+# when there are pages to point at.
+
+name: 'mca-common'
+displayName: 'MCA Common'
+description: 'What every DCC in the MCA pipeline shares.'
+depotName: 'common'
+version: '3.0.0'
+required: True
+
+# This describes the package as it is today, not as it will be: every entry is checked
+# against the disk, and a variable pointing at a folder that is not there is reported. The
+# resources, tools and pyqt entries come back as those pieces are ported.
+environment:
+  MCA_COMMON_BASE_PATH: '{self}'
+  MCA_COMMON_CONFIGS_PATH: '{self}/startup/configs'
+  MCA_COMMON_STARTUP_PATH: '{self}/startup'
+  MCA_COMMON_PATHS:
+    - '{self}/textio'
+    - '{self}/utils'
+    - '{self}/paths'
+
+urls:
+  project: ''
+  animation: ''
+  modeling: ''
+  rigging: ''
+  tracker: ''
+  setup: ''

@@ -13,6 +13,7 @@ Each piece lands finished rather than copied and marked for later.
 | `utils/fileio.py` | ported, 33 checks |
 | `paths/` | ported, 35 checks |
 | `startup/` | ported, 27 checks — `startup.py`, `configs/config.py`, `consts.py` |
+| `startup/configs/package_config.py` | ported, 19 checks — replaces the broken `textio/packages.py` |
 | `startup/dccs/` (userSetup and friends) | to do |
 | `startup/configs/common_env.py` | **dropped** — see below |
 | `pyqt/` | to do |
@@ -98,6 +99,21 @@ no arguments against a constructor that requires one, one set `MCA_COMMON_CONFIG
 that does not exist, one only logged a variable it did not set, and one logged the framework
 path under the project root's name. What they were meant to do is in `project_paths` and
 `startup`.
+
+## What a package says about itself
+
+Each package ships an `mca_package.yaml` beside its code — its name, its version, and the
+environment variables it wants, written against `{self}`, the folder the file is in.
+
+`package_config.read_package(folder)` reads it, and **reports what is wrong with it**, which
+nothing did before. All three manifests in the depot are broken: mca-ue sets `MCA_MAYA_*`
+variables copied from the Maya one, mca-maya points at `mca.mya` with a dot where the folder
+is `mca/mya`, and mca-common listed a `dependecies` folder that never existed. A list value
+was also formatted into the environment as a Python list — `"['a', 'b']"`, brackets and all —
+rather than joined with the platform separator.
+
+The `urls` block is blank on purpose: the ones it replaces pointed at a previous employer's
+internal wiki.
 
 ## Tests
 
