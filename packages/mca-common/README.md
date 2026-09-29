@@ -12,8 +12,9 @@ Each piece lands finished rather than copied and marked for later.
 | `textio/` | ported, 27 checks — one engine, three doors |
 | `utils/fileio.py` | ported, 33 checks |
 | `paths/` | ported, 35 checks |
-| `startup/configs/consts.py` | ported — the name table both sides read |
-| `startup/` (the rest) | to do |
+| `startup/` | ported, 27 checks — `startup.py`, `configs/config.py`, `consts.py` |
+| `startup/dccs/` (userSetup and friends) | to do |
+| `startup/configs/common_env.py` | **dropped** — see below |
 | `pyqt/` | to do |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
@@ -70,6 +71,33 @@ while the functions beside them answered correctly.
 
 `MCA_PREFS_ROOT` moves where preferences are read from, so the launcher's first-run sandbox
 and the suites never touch a real machine's.
+
+## Starting the framework
+
+```python
+from mca.common.startup import startup
+
+startup.startup_init('Wayward', 'maya')   # once, from the DCC's own start-up script
+startup.restart()                          # pick up a code change without closing the DCC
+```
+
+The launcher has already installed this DCC version's Python packages and proved they
+import; this puts the framework on `sys.path` and lets each package run its own start-up.
+
+`config.extend_namespace()` is the part worth knowing about. `mca` is one namespace spread
+across folders — `mca-common` holds `mca/common`, `mca-maya` holds `mca/mya` — and
+`pkgutil.extend_path` works out where its pieces are **once**, when `mca/__init__.py` is
+first imported, at which point only mca-common is on the path. Adding mca-maya afterwards
+does not change a namespace that is already worked out. The version this replaces got away
+with it because `reload_modules()` ran just before the package start-ups and deleted `mca`
+from `sys.modules`, so the next import rebuilt it — which made a development convenience
+load-bearing, silently.
+
+`common_env.py` is not coming across. Of its five functions, one called `ProjectEnvs()` with
+no arguments against a constructor that requires one, one set `MCA_COMMON_CONFIG` to a folder
+that does not exist, one only logged a variable it did not set, and one logged the framework
+path under the project root's name. What they were meant to do is in `project_paths` and
+`startup`.
 
 ## Tests
 
