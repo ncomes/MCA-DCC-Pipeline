@@ -14,9 +14,9 @@ version, go.
 import logging
 
 # PySide6 imports
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QMenu, QPushButton
 from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 
 # mca imports
@@ -39,14 +39,24 @@ class DccRow(QFrame):
     that is supported but missing is visible and actionable in the same control, rather than
     absent with no explanation.
 
+    Right-clicking a row offers what can be done to the version it is showing - a shortcut
+    for it, its dependencies - because that is where somebody is already looking when they
+    think of it.
+
     :signal launch_requested: (dcc name, key)
     :signal install_requested: (dcc name, key)
     :signal choice_changed: (dcc name, key)
+    :signal shortcut_requested: (dcc name, key)
+    :signal check_requested: (dcc name, key)
+    :signal reinstall_requested: (dcc name, key)
     """
 
     launch_requested = Signal(str, str)
     install_requested = Signal(str, str)
     choice_changed = Signal(str, str)
+    shortcut_requested = Signal(str, str)
+    check_requested = Signal(str, str)
+    reinstall_requested = Signal(str, str)
 
     def __init__(self, dcc_name, label, icon_name, parent=None):
         super().__init__(parent)
@@ -105,6 +115,9 @@ class DccRow(QFrame):
         self.button.clicked.connect(self._primary)
         self.action.clicked.connect(self._primary)
         self.versions.currentIndexChanged.connect(self._changed)
+
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._context_menu)
 
     # ------------------------------------------------------------------ #
     # What it shows
@@ -201,6 +214,30 @@ class DccRow(QFrame):
         key = self.current_key()
         if key and self.current_is_installed():
             self.choice_changed.emit(self.dcc_name, key)
+
+    def _context_menu(self, where):
+        """
+        What can be done to the version this row is showing.
+
+        :param QPoint where: Where the click was, in this row.
+        """
+
+        key = self.current_key()
+        if not key or not self.current_is_installed():
+            return
+
+        menu = QMenu(self)
+        action = menu.addAction('Create Desktop Shortcut')
+        action.triggered.connect(
+            lambda checked=False: self.shortcut_requested.emit(self.dcc_name, key))
+        menu.addSeparator()
+        action = menu.addAction('Check Dependencies')
+        action.triggered.connect(
+            lambda checked=False: self.check_requested.emit(self.dcc_name, key))
+        action = menu.addAction('Reinstall Dependencies')
+        action.triggered.connect(
+            lambda checked=False: self.reinstall_requested.emit(self.dcc_name, key))
+        menu.exec(self.mapToGlobal(where if isinstance(where, QPoint) else QPoint(0, 0)))
 
 
 class UnrealRow(DccRow):

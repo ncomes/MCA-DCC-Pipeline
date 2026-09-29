@@ -14,10 +14,12 @@ written for a person: on a failure it says what to do next.
 # python imports
 import logging
 import os
+import sys
 
 # mca imports
 from mca import launcher
-from mca.launcher.core import dccs, dependencies, environment, platform_paths, prefs, projects
+from mca.launcher.core import dccs, dependencies, environment, platform_paths, prefs
+from mca.launcher.core import projects, shortcuts
 from mca.launcher.core.dccs import base
 from mca.launcher.core.contract import safe
 
@@ -291,6 +293,67 @@ def install_dcc(dcc, key=None, project=None):
              'installers_root': root},
             'Opened the download page for {} {}, because {}. Install it, then press Refresh.'
             .format(dcc_object.label, key or '', where))
+
+
+# ---------------------------------------------------------------------------- #
+# Shortcuts
+# ---------------------------------------------------------------------------- #
+@safe
+def create_shortcut(dcc, key=None, project=None, folder='', name=''):
+    """
+    Put a shortcut on the desktop that starts one DCC for one project.
+
+    The shortcut carries the project by name, not "whichever is current": a shortcut whose
+    behaviour depends on a setting you cannot see from the desktop is a trap. It does not
+    skip the dependency check - it runs the same ``api.launch`` the window does, which
+    refuses when the packages are not ready. What it skips is the window.
+
+    :param str dcc: The DCC name.
+    :param str key: The version, or for Unreal the project path. None uses what is picked.
+    :param str project: The project. None uses the current one.
+    :param str folder: Where to write it. Empty means the desktop.
+    :param str name: What to call it, without .lnk. Empty means "Maya 2025 - Wayward".
+    :return: Response whose result is the shortcut's path.
+    :rtype: dict
+    """
+
+    dcc_object = dccs.get(dcc)
+    project_name = _resolve_project(project)
+
+    if not key:
+        installed = [target.key for target in dcc_object.targets()]
+        key = prefs.Selections.load(project_name).chosen(dcc_object.name, installed)
+        if not key:
+            raise ValueError('There is no {} on this machine to make a shortcut for.'
+                             .format(dcc_object.label))
+
+    if dcc_object.name != 'unreal' and not dcc_object.is_installed(key):
+        raise ValueError('{} {} is not installed here, so a shortcut to it would not start '
+                         'anything. Install it first.'.format(dcc_object.label, key))
+
+    target, leading = shortcuts.runner()
+    if not target:
+        raise ValueError('The launcher cannot work out how it would be started from a '
+                         'shortcut: it is not a frozen build, there is no mca-launcher '
+                         'command beside {}, and {} is missing.'
+                         .format(sys.executable, shortcuts.RUNNER_NAME))
+
+    where = folder or shortcuts.desktop_folder()
+    label = name or shortcuts.shortcut_name(dcc_object.label, key, project_name)
+    path = os.path.join(where, label + '.lnk')
+
+    written = shortcuts.write(
+        path, target,
+        arguments=leading + ['{}:{}'.format(dcc_object.name, key), '--project', project_name],
+        working_directory=os.path.dirname(target),
+        icon=dcc_object.executable(key),
+        description='Start {} {} for {} with the MCA pipeline.'
+                    .format(dcc_object.label, key, project_name))
+
+    return ({'path': written, 'dcc': dcc_object.name, 'key': key, 'project': project_name,
+             'target': target},
+            'Put "{}" on your desktop. It starts {} {} for {} without opening the launcher.'
+            .format(label, dcc_object.label, key, project_name))
 
 
 # ---------------------------------------------------------------------------- #

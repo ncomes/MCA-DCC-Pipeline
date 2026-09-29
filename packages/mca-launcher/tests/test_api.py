@@ -323,6 +323,51 @@ def body(suite):
                     not state['result']['satisfied'] and 'changed' in state['message'],
                     state['message'])
 
+        # -- desktop shortcuts ---------------------------------------- #
+        # The shortcut carries the project by name. One that meant "whichever project is
+        # current" would do something different depending on a setting nobody can see from
+        # the desktop.
+        from mca.launcher.core import shortcuts
+
+        written = []
+        real_write = shortcuts.write
+        shortcuts.write = lambda path, target, arguments=(), working_directory='', icon='', \
+            description='': (written.append({'path': path, 'target': target,
+                                             'arguments': list(arguments),
+                                             'icon': icon, 'description': description})
+                             or path)
+        try:
+            response = api.create_shortcut('pretend', '2025', folder=suite.temp)
+            suite.check('a shortcut can be made for an installed version', response['ok'],
+                        response['message'])
+            suite.check('named for the DCC, the version and the project',
+                        written and written[-1]['path'].endswith(
+                            os.path.join(suite.temp, 'Pretend 2025 - Wayward.lnk')),
+                        str(written[-1]['path'] if written else None))
+            arguments = written[-1]['arguments']
+            suite.check('and it starts the launcher with that exact version',
+                        'pretend:2025' in arguments, str(arguments))
+            suite.check('and with the project written into it, not "whichever is current"',
+                        '--project' in arguments and 'Wayward' in arguments, str(arguments))
+            suite.check('and the message says where it went and what it does',
+                        'desktop' in response['message'] and 'Wayward' in response['message'],
+                        response['message'])
+
+            # With no version named it takes what was chosen, which is what the row shows.
+            written[:] = []
+            response = api.create_shortcut('pretend', folder=suite.temp)
+            suite.check('with no version named it uses the one that was chosen',
+                        response['ok'] and 'pretend:2025' in written[-1]['arguments'],
+                        str(written[-1]['arguments'] if written else response['message']))
+
+            response = api.create_shortcut('pretend', '2019', folder=suite.temp)
+            suite.check('a version that is not installed is refused, not written',
+                        not response['ok'], response['message'])
+            suite.check('and the refusal says to install it first',
+                        'not installed' in response['message'], response['message'])
+        finally:
+            shortcuts.write = real_write
+
         # -- doctor --------------------------------------------------- #
         report = api.doctor()
         suite.check('doctor reports the project, the framework and every DCC it found',

@@ -23,6 +23,7 @@ harness.add_package_to_path()
 
 from mca.launcher.core import contract, dependencies, environment, fileio  # noqa: E402
 from mca.launcher.core import platform_paths, prefs, projects  # noqa: E402
+from mca.launcher.core import shortcuts  # noqa: E402
 from mca.launcher.core.dccs import base as dcc_base  # noqa: E402
 
 
@@ -317,6 +318,60 @@ def body(suite):
     suite.check('unreal is told which project it is opening',
                 environment.build(project, 'unreal', os.path.join(suite.temp, 'g.uproject'),
                                   base={})['UE_PROJECT_PATH'].endswith('g.uproject'))
+
+    # ---------------------------------------------------------------- #
+    # Desktop shortcuts
+    # ---------------------------------------------------------------- #
+    suite.check('a shortcut is named the way a person would write it',
+                shortcuts.shortcut_name('Maya', '2025', 'Wayward') == 'Maya 2025 - Wayward',
+                shortcuts.shortcut_name('Maya', '2025', 'Wayward'))
+    suite.check('an Unreal one is named after the project file, not its path',
+                shortcuts.shortcut_name('Unreal Engine', r'D:\Games\Wayward.uproject',
+                                        'Wayward') == 'Unreal Engine Wayward - Wayward',
+                shortcuts.shortcut_name('Unreal Engine', r'D:\Games\Wayward.uproject',
+                                        'Wayward'))
+    suite.check('and nothing Windows refuses to have in a file name survives',
+                '/' not in shortcuts.shortcut_name('Maya', '2025', 'A/B:C') and
+                ':' not in shortcuts.shortcut_name('Maya', '2025', 'A/B:C'),
+                shortcuts.shortcut_name('Maya', '2025', 'A/B:C'))
+
+    target, leading = shortcuts.runner()
+    suite.check('the launcher can say what a shortcut should start', bool(target),
+                '{} {}'.format(target, leading))
+    suite.check('and from a source checkout that is a runner script that exists',
+                not leading or os.path.isfile(leading[0]), str(leading))
+    suite.check('the runner script puts the package on the path itself, because a .lnk '
+                'cannot set one',
+                'sys.path' in dependencies.read_text(shortcuts.runner_script())
+                if shortcuts.runner_script() else True)
+    suite.check('the desktop is asked for, not assumed',
+                bool(shortcuts.desktop_folder()), shortcuts.desktop_folder())
+
+    # A quote in a project name would otherwise end the PowerShell string early, and the
+    # rest of it would be run as code.
+    suite.check("a quote in a name is escaped rather than ending the string",
+                shortcuts._powershell_literal("O'Brien") == "O''Brien",
+                shortcuts._powershell_literal("O'Brien"))
+    suite.check('an argument with a space in it is quoted',
+                shortcuts._quote(r'C:\Two Words\x.py') == r'"C:\Two Words\x.py"',
+                shortcuts._quote(r'C:\Two Words\x.py'))
+    suite.check('and one without is left alone', shortcuts._quote('maya:2025') == 'maya:2025')
+
+    if platform_paths.IS_WINDOWS:
+        # The real thing, PowerShell and all. Run on Windows only, which is where a shortcut
+        # means anything - and where the escaping has to actually hold.
+        made = shortcuts.write(os.path.join(suite.temp, "Probe O'Brien.lnk"), sys.executable,
+                               arguments=['--version', os.path.join(suite.temp, 'two words')],
+                               description='a shortcut written by the suite')
+        suite.check('a shortcut is really written, by PowerShell, on Windows',
+                    os.path.isfile(made), made)
+        suite.check('and it is a real .lnk rather than an empty file',
+                    os.path.getsize(made) > 300, str(os.path.getsize(made)))
+    else:
+        message = suite.raises('off Windows, writing one refuses instead of pretending',
+                               shortcuts.write, os.path.join(suite.temp, 'x.lnk'),
+                               'python')
+        suite.check('and says why', 'Windows' in message, message)
 
     # ---------------------------------------------------------------- #
     # A package that installs and then will not load

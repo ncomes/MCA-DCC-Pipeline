@@ -12,6 +12,7 @@ agent that has been asked why Maya will not start::
     mca-launcher --install-deps maya:2025
     mca-launcher --launch maya:2025
     mca-launcher --launch maya --project Wayward --json
+    mca-launcher --shortcut maya:2025 --project Wayward
 
 ``--json`` prints the response as it comes back from the API, which is the form an agent
 should read. Without it, the message is printed for a person. The exit code is 0 for ok and
@@ -53,6 +54,10 @@ def build_parser():
     parser.add_argument('--reinstall-deps', metavar='DCC[:VERSION]',
                         help='install them even if they look fine')
     parser.add_argument('--launch', metavar='DCC[:VERSION]', help='start a DCC')
+    parser.add_argument('--shortcut', metavar='DCC[:VERSION]',
+                        help='put a desktop shortcut for it, for one project, on the desktop')
+    parser.add_argument('--shortcut-folder', metavar='FOLDER',
+                        help='write the shortcut here instead of on the desktop')
     parser.add_argument('--project', metavar='NAME',
                         help='which project to use; the current one by default')
     parser.add_argument('--json', action='store_true', dest='as_json',
@@ -133,6 +138,12 @@ def main(argv=None):
             return report(api.ensure_dependencies(dcc, key, project=arguments.project,
                                                  force=force, progress=progress),
                           arguments.as_json)
+
+    if arguments.shortcut:
+        dcc, key = split_target(arguments.shortcut)
+        return report(api.create_shortcut(dcc, key, project=arguments.project,
+                                         folder=arguments.shortcut_folder or ''),
+                      arguments.as_json)
 
     if arguments.launch:
         dcc, key = split_target(arguments.launch)

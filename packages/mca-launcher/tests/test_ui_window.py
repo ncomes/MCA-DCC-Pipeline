@@ -368,6 +368,35 @@ def body(suite):
                     [action.text() for action in main.check_menu.actions()] == labels,
                     str([action.text() for action in main.check_menu.actions()]))
 
+        # -- desktop shortcuts, from the menu and from the row ---------- #
+        from mca.launcher.core import shortcuts
+
+        made = []
+        real_create = api.create_shortcut
+        api.create_shortcut = lambda dcc, key=None, project=None, folder='', name='': (
+            made.append((dcc, key, project)) or
+            {'ok': True, 'result': {'path': 'C:/Desktop/x.lnk'},
+             'message': 'Put "x" on your desktop.'})
+        try:
+            labels = [action.text() for action in main.shortcut_menu.actions()]
+            suite.check('the shortcut menu offers every installed version',
+                        labels == ['Pretend 2025', 'Pretend 2024'], str(labels))
+            for action in main.shortcut_menu.actions():
+                if action.text() == 'Pretend 2024':
+                    action.trigger()
+            suite.check('and picking one makes a shortcut for that version and this project',
+                        made == [('pretend', '2024', 'Wayward')], str(made))
+
+            # And the same from the row, which is where somebody is already looking.
+            made[:] = []
+            row = main.rows['pretend']
+            row.versions.setCurrentIndex(row.keys.index('2025'))
+            row.shortcut_requested.emit('pretend', row.current_key())
+            suite.check('right-clicking a row offers it for the version that row is showing',
+                        made == [('pretend', '2025', 'Wayward')], str(made))
+        finally:
+            api.create_shortcut = real_create
+
         shown['ask'] = []
         calls[:] = []
         for action in main.reinstall_menu.actions():

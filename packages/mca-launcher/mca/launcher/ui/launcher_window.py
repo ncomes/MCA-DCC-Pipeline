@@ -140,6 +140,12 @@ class LauncherWindow(QMainWindow):
 
         tools.addSeparator()
 
+        self.shortcut_menu = tools.addMenu('Create Desktop Shortcut')
+        self.shortcut_menu.setStatusTip('A shortcut that starts one DCC for this project, '
+                                        'without opening the launcher')
+
+        tools.addSeparator()
+
         action = tools.addAction('Diagnose (Doctor)')
         action.setStatusTip('Everything worth knowing when something will not start')
         action.triggered.connect(self._doctor)
@@ -166,6 +172,9 @@ class LauncherWindow(QMainWindow):
             row.launch_requested.connect(self._launch)
             row.install_requested.connect(self._install)
             row.choice_changed.connect(self._remember_choice)
+            row.shortcut_requested.connect(self._create_shortcut)
+            row.check_requested.connect(self._check_dependencies)
+            row.reinstall_requested.connect(self._reinstall_dependencies)
             self.rows[entry['dcc']] = row
             self.row_layout.addWidget(row)
 
@@ -197,29 +206,34 @@ class LauncherWindow(QMainWindow):
             self._say(listing['message'], ok=False)
             return
 
-        self._rebuild_dependency_menus(listing['result'])
+        unreal = api.unreal_projects(project=project)
+        unreal_projects = unreal['result'] if unreal['ok'] else []
+        self._rebuild_menus(listing['result'], unreal_projects)
 
         for entry in listing['result']:
             row = self.rows.get(entry['dcc'])
             if not row:
                 continue
             if entry['dcc'] == 'unreal':
-                projects = api.unreal_projects(project=project)
-                row.set_projects(projects['result'] if projects['ok'] else [],
-                                 entry['targets'])
+                row.set_projects(unreal_projects, entry['targets'])
             else:
                 row.set_targets(entry['targets'], entry['chosen'])
                 row.set_detail(self._detail_for(entry))
 
-    def _rebuild_dependency_menus(self, listing):
+    def _rebuild_menus(self, listing, unreal_projects):
         """
-        Fill the two dependency submenus with what is actually on this machine.
+        Fill the submenus with what is actually on this machine, named.
+
+        The shortcut menu offers what each row can start: versions for Maya and
+        MotionBuilder, Unreal projects for Unreal - which is what its dropdown holds and what
+        a shortcut to it should carry.
 
         :param list(dict) listing: From ``api.dcc_targets``.
+        :param list(dict) unreal_projects: From ``api.unreal_projects``.
         """
 
-        self.check_menu.clear()
-        self.reinstall_menu.clear()
+        for menu in (self.check_menu, self.reinstall_menu, self.shortcut_menu):
+            menu.clear()
 
         found = 0
         for entry in listing:
@@ -234,11 +248,26 @@ class LauncherWindow(QMainWindow):
                 action = self.reinstall_menu.addAction(label)
                 action.triggered.connect(
                     lambda checked=False, d=dcc, k=key: self._reinstall_dependencies(d, k))
+                if dcc != 'unreal':
+                    action = self.shortcut_menu.addAction(label)
+                    action.triggered.connect(
+                        lambda checked=False, d=dcc, k=key: self._create_shortcut(d, k))
+
+        for entry in unreal_projects:
+            if not entry.get('exists'):
+                continue
+            path = entry['path']
+            action = self.shortcut_menu.addAction('Unreal - {}'.format(entry['name']))
+            action.triggered.connect(
+                lambda checked=False, p=path: self._create_shortcut('unreal', p))
 
         if not found:
             for menu in (self.check_menu, self.reinstall_menu):
                 action = menu.addAction('nothing is installed')
                 action.setEnabled(False)
+        if self.shortcut_menu.isEmpty():
+            action = self.shortcut_menu.addAction('nothing to make a shortcut for')
+            action.setEnabled(False)
 
     @staticmethod
     def _detail_for(entry):
@@ -313,6 +342,28 @@ class LauncherWindow(QMainWindow):
         dialogs.tell('Install', response['message'], self,
                      response['result'].get('installer', '') or
                      response['result'].get('url', ''))
+        self._say(response['message'])
+
+    def _create_shortcut(self, dcc, key):
+        """
+        Put a shortcut to one DCC, for this project, on the desktop.
+
+        :param str dcc: The DCC name.
+        :param str key: The version, or for Unreal the project path.
+        """
+
+        project = self.project_bar.current_project() or None
+        if not project:
+            self._say('A shortcut needs a project to open. Set one up first.', ok=False)
+            return
+
+        response = api.create_shortcut(dcc, key, project=project)
+        if not response['ok']:
+            dialogs.complain('Desktop Shortcut', response['message'], self)
+            self._say(response['message'], ok=False)
+            return
+        dialogs.tell('Desktop Shortcut', response['message'], self,
+                     response['result'].get('path', ''))
         self._say(response['message'])
 
     def _remember_choice(self, dcc, key):
