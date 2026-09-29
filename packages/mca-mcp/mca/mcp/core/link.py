@@ -159,11 +159,16 @@ def _wrapper(script, result_path):
 
 #: The program sent down the socket. Runs the caller's script on Maya's main thread and
 #: writes one JSON file with everything worth knowing about how it went.
-_PROGRAM = """import base64, json, io, traceback, contextlib
-import maya.utils
-
-
-def _mca_run():
+#:
+#: **Every import is inside the function.** Maya executes what arrives on the command port
+#: inside a function of its own, so names bound at the top of this program land in that
+#: frame's locals - while ``_mca_run``, defined in the same exec, resolves its globals from
+#: the handler's module globals, where they were never bound. The result is a NameError
+#: minutes later, on the main thread, with nothing to connect it to the cause. Keeping the
+#: imports inside the function makes them locals of the function, which works wherever this
+#: is executed from.
+_PROGRAM = """def _mca_run():
+    import base64, json, io, traceback, contextlib
     payload = {'ok': False, 'result': None, 'output': '', 'error': '', 'traceback': ''}
     namespace = {'__name__': '__mca_mcp__'}
     printed = io.StringIO()
@@ -189,6 +194,7 @@ def _mca_run():
         pass
 
 
+import maya.utils
 maya.utils.executeDeferred(_mca_run)
 """
 

@@ -99,6 +99,64 @@ def main():
           '59321' in message and 'launcher' in message, message)
 
     # ------------------------------------------------------------------ #
+    # The wrapper, run the way Maya runs it
+    # ------------------------------------------------------------------ #
+    #
+    # Maya executes what arrives on the command port INSIDE A FUNCTION, and defers the real
+    # work to the main thread. Both matter: names bound at the top of the program land in
+    # that frame's locals, while the deferred function resolves its globals from the
+    # handler's module globals. Get that wrong and the failure is a NameError, later, on
+    # another thread, with nothing pointing back here. So this runs it the same way.
+    import types
+
+    fake_maya = types.ModuleType('maya')
+    fake_utils = types.ModuleType('maya.utils')
+    deferred = []
+    fake_utils.executeDeferred = deferred.append
+    fake_maya.utils = fake_utils
+    sys.modules['maya'] = fake_maya
+    sys.modules['maya.utils'] = fake_utils
+    try:
+        result_file = os.path.join(temp, 'wrapper.json').replace(chr(92), '/')
+
+        def like_mayas_handler(payload):
+            """Exec the payload inside a function, which is what the command port does."""
+
+            exec(compile(payload, '<command-port>', 'exec'))
+
+        like_mayas_handler(link._wrapper(
+            "import json\nresult = {'answer': 42}\nprint('printed from the script')\n",
+            result_file))
+        check('the command port would accept and run it', len(deferred) == 1,
+              str(deferred))
+        deferred[0]()          # what Maya's main thread does a moment later
+
+        written = fileio_read(result_file.replace('/', os.sep))
+        check('running it the way Maya does writes a result file', written is not None,
+              'nothing was written - this is the NameError that cost an evening')
+        if written:
+            check('with the script\'s result in it', written.get('result') == {'answer': 42},
+                  str(written))
+            check('and whatever it printed', 'printed from the script' in written.get('output',
+                                                                                      ''),
+                  str(written))
+            check('and no error', not written.get('error'), str(written.get('error')))
+
+        # A script that raises must still produce a file - that is how the caller learns.
+        deferred[:] = []
+        broken_file = os.path.join(temp, 'broken.json').replace(chr(92), '/')
+        like_mayas_handler(link._wrapper('raise ValueError("the cage is inside out")\n',
+                                         broken_file))
+        deferred[0]()
+        written = fileio_read(broken_file.replace('/', os.sep))
+        check('a script that raises still answers, with the error and a traceback',
+              written and not written['ok'] and 'inside out' in written['error']
+              and 'ValueError' in written.get('traceback', ''), str(written))
+    finally:
+        sys.modules.pop('maya.utils', None)
+        sys.modules.pop('maya', None)
+
+    # ------------------------------------------------------------------ #
     # Sessions
     # ------------------------------------------------------------------ #
     check('the sessions folder honours MCA_SESSIONS_ROOT',
@@ -208,6 +266,18 @@ def main():
     os.environ.pop('MCA_MAYA_MEL_PORT')
 
     shutil.rmtree(temp, ignore_errors=True)
+
+
+def fileio_read(path):
+    """Read a JSON file the wrapper wrote, or None when it never appeared."""
+
+    import json
+
+    try:
+        with open(path) as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
 
 
 def _compiles(source):
