@@ -25,6 +25,23 @@ Long jobs run on a worker thread (`dialogs.Job`), so the progress window keeps m
 pip is quiet. Tools → Check / Reinstall Dependencies are submenus listing every installed
 version by name; each entry acts on that version.
 
+## Desktop shortcuts
+
+**Tools → Create Desktop Shortcut**, or right-click a row, and one click starts that DCC for
+that project with no launcher window:
+
+```
+mca-launcher --shortcut maya:2025 --project Wayward
+```
+
+The shortcut carries the project **by name** — one that meant "whichever project is current"
+would do something different depending on a setting you cannot see from the desktop. It does
+not skip the dependency check: it runs the same `api.launch` the window does, which refuses
+when the packages are not ready. What it skips is the window, and only when there is nothing
+to say — the first use on a machine that has never had that version set up opens the progress
+window, because silence for the minutes pip takes is indistinguishable from a broken
+shortcut.
+
 ## Installing a version you do not have
 
 Whatever the studio actually keeps, per DCC and version:
