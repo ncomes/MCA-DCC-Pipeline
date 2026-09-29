@@ -142,9 +142,19 @@ def _wrapper(script, result_path):
     # Written as a template with two markers rather than a format string: the program is
     # mostly dict literals, and every brace in it would otherwise need escaping - which is
     # exactly the class of quoting bug this transport exists to avoid.
-    return (_PROGRAM
-            .replace('__ENCODED__', encoded)
-            .replace('__RESULT_PATH__', result_path))
+    program = (_PROGRAM
+               .replace('__ENCODED__', encoded)
+               .replace('__RESULT_PATH__', result_path))
+
+    # And the whole thing goes down the socket as ONE line.
+    #
+    # Maya's command port executes what it receives a line at a time, so a multi-line
+    # program arrives as a series of fragments: `def _mca_run():` alone is a syntax error,
+    # nothing runs, no result file is ever written, and the caller waits out its timeout
+    # with no idea why. Encoding the program and sending a single exec() is what makes the
+    # readable template above safe to write.
+    payload = base64.b64encode(program.encode('utf-8')).decode('ascii')
+    return "exec(__import__('base64').b64decode('{}').decode('utf-8'))".format(payload)
 
 
 #: The program sent down the socket. Runs the caller's script on Maya's main thread and

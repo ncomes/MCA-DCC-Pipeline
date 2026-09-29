@@ -126,10 +126,19 @@ def build(project_prefs, dcc_name, key, base=None):
     environment['MCA_COMMON_DEPEND'] = deps
     environment['MCA_{}_DEPEND'.format(_depend_name(dcc_name))] = deps
 
-    # The bootstrap folder, added to whatever the machine already had.
+    # The DCC's python path is BUILT, not inherited.
+    #
+    # It used to keep whatever the launching shell happened to carry, which sounds
+    # generous and is not: a test harness that set PYTHONPATH to its own package roots
+    # passed them into Maya, so Maya's interpreter had a second copy of the `mca`
+    # namespace in front of the real one before the framework had said a word. What a DCC
+    # imports should depend on the project it was started for and nothing else.
     variable = PATH_VARIABLE.get(dcc_name, 'PYTHONPATH')
-    environment[variable] = _prepend(environment.get(variable, ''),
-                                     startup_folder(framework_path, dcc_name))
+    inherited = environment.pop(variable, '')
+    if inherited:
+        logger.info('Not passing the inherited %s on to %s: %s', variable, dcc_name,
+                    inherited)
+    environment[variable] = startup_folder(framework_path, dcc_name)
 
     # And the MCP package, so the DCC's start-up can open its command ports. Passed as a
     # variable as well as on the path: the start-up script reads MCA_MCP_PATH by name, which
@@ -138,6 +147,10 @@ def build(project_prefs, dcc_name, key, base=None):
     if mcp_folder:
         environment['MCA_MCP_PATH'] = mcp_folder
         environment[variable] = _prepend(environment[variable], mcp_folder)
+        # Opening a command port is off unless asked for. The launcher asks, for the DCCs it
+        # starts; a DCC started any other way is left alone, which keeps "start it another
+        # way" as an escape from anything this does during start-up.
+        environment['MCA_MAYA_COMMAND_PORTS'] = '1'
 
     if dcc_name == 'unreal' and str(key).lower().endswith('.uproject'):
         environment['UE_PROJECT_PATH'] = os.path.normpath(key)

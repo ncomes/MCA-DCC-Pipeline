@@ -96,6 +96,27 @@ def main(version=None):
           control.execute("result = 'still here'\n").get('result') == 'still here')
 
     # --- something that needs the main thread --------------------------- #
+    #
+    # From here on the scene is modified. In a Maya this test started that is fine; in one
+    # somebody is working in it is not, so it asks first and skips rather than helping
+    # itself to the scene.
+    state = control.execute("import maya.cmds as cmds\n"
+                            "result = {'scene': cmds.file(query=True, sceneName=True) or '',\n"
+                            "          'modified': bool(cmds.file(query=True, modified=True))}\n")
+    busy = state.get('ok') and (state['result'].get('scene')
+                                or state['result'].get('modified'))
+    if busy and not started_by_us:
+        print('')
+        print('This Maya was already open and has a scene in it ({}{}). Leaving it alone:'
+              .format(os.path.basename(state['result']['scene']) or 'untitled',
+                      ', modified' if state['result']['modified'] else ''))
+        print('the checks that build and save geometry are skipped. Close it, or run this')
+        print('again against a Maya this test starts itself, for the full set.')
+        sessions_now = control.running()
+        check('the session is listed with its version and port',
+              sessions_now and sessions_now[0].get('python_port'), str(sessions_now))
+        return
+
     answer = control.execute(
         "import maya.cmds as cmds\n"
         "cmds.file(new=True, force=True)\n"

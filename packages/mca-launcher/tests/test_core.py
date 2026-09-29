@@ -281,13 +281,13 @@ def body(suite):
                     for key, value in values.items() if key.startswith('MCA_')),
                 str({key: value for key, value in values.items()
                      if key.startswith('MCA_') and not value}))
-    suite.check('PYTHONPATH keeps what the machine already had',
-                '/somebody/elses/path' in values['PYTHONPATH'], values['PYTHONPATH'])
     parts = values['PYTHONPATH'].split(os.pathsep)
-    suite.check('and the bootstrap folder is in front of it',
-                environment.startup_folder(framework, 'maya') in parts
-                and parts.index(environment.startup_folder(framework, 'maya'))
-                < parts.index('/somebody/elses/path'), values['PYTHONPATH'])
+    suite.check('the bootstrap folder is on PYTHONPATH',
+                environment.startup_folder(framework, 'maya') in parts, values['PYTHONPATH'])
+    # Deliberately NOT inherited: a shell's PYTHONPATH reaching Maya put a second copy of
+    # the mca namespace in front of the real one, and Maya died on the splash screen.
+    suite.check('and whatever the launching shell carried is left behind',
+                '/somebody/elses/path' not in values['PYTHONPATH'], values['PYTHONPATH'])
 
     # The MCP package rides along when it is a sibling, which is what lets Maya's start-up
     # open the command ports an assistant reaches it through.

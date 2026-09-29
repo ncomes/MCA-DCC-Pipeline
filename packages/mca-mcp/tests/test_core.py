@@ -62,14 +62,23 @@ def main():
     program = link._wrapper(script, 'C:/Temp/result.json')
 
     check('the program compiles', _compiles(program))
+    check('and is ONE line, because Maya\'s command port executes what it receives line by '
+          'line - a multi-line program arrives as fragments and simply never answers',
+          len(program.strip().splitlines()) == 1, repr(program[:120]))
+    check('the single line is an exec of something encoded, not source in the clear',
+          program.startswith("exec(__import__('base64')"), program[:60])
+    import re
+
+    inner = base64.b64decode(
+        re.search(r"b64decode\('([^']+)'\)", program).group(1)).decode('utf-8')
+    check('what Maya will actually run is a valid program too', _compiles(inner))
     check('the script travels base64-encoded, so quotes and backslashes cannot be mangled',
-          base64.b64encode(script.encode('utf-8')).decode('ascii') in program)
-    check('the script itself is not in the program in plain text',
-          "cmds.ls('pCube*')" not in program)
-    check('the work is deferred onto Maya\'s main thread',
-          'executeDeferred' in program)
+          base64.b64encode(script.encode('utf-8')).decode('ascii') in inner)
+    check('the script itself is nowhere in the clear',
+          "cmds.ls('pCube*')" not in program and "cmds.ls('pCube*')" not in inner)
+    check('the work is deferred onto Maya\'s main thread', 'executeDeferred' in inner)
     check('the result path is embedded',
-          'C:/Temp/result.json' in program and '__RESULT_PATH__' not in program)
+          'C:/Temp/result.json' in inner and '__RESULT_PATH__' not in inner)
 
     nasty = 'result = "quotes \\" and \'single\' and {braces} and \\\\ backslash"\n'
     check('a script full of quotes and braces still produces a valid program',
@@ -174,15 +183,21 @@ def main():
     # ------------------------------------------------------------------ #
     from mca.mcp.maya import bootstrap
 
+    os.environ['MCA_MAYA_COMMAND_PORTS'] = '1'
     answer = bootstrap.start()
     check('the bootstrap refuses politely when it is not inside Maya',
           not answer['ok'] and 'not Maya' in answer['message'], answer['message'])
+    os.environ.pop('MCA_MAYA_COMMAND_PORTS')
 
-    os.environ['MCA_MAYA_COMMAND_PORTS'] = '0'
-    check('and the environment switch turns it off', not bootstrap.enabled())
+    os.environ.pop('MCA_MAYA_COMMAND_PORTS', None)
+    check('the ports stay shut unless something asks for them', not bootstrap.enabled())
     answer = bootstrap.start()
-    check('with the switch off it does nothing, and says so',
-          not answer['ok'] and 'off' in answer['message'], answer['message'])
+    check('and a Maya nobody asked about is left alone, with a reason given',
+          not answer['ok'] and 'not set' in answer['message'], answer['message'])
+    os.environ['MCA_MAYA_COMMAND_PORTS'] = '1'
+    check('the launcher asking for them turns them on', bootstrap.enabled())
+    os.environ['MCA_MAYA_COMMAND_PORTS'] = '0'
+    check('and an explicit off is still off', not bootstrap.enabled())
     os.environ.pop('MCA_MAYA_COMMAND_PORTS')
 
     os.environ['MCA_MAYA_MEL_PORT'] = '7100'

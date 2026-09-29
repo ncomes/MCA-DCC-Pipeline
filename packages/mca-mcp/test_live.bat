@@ -13,10 +13,16 @@ for %%P in ("C:\Python310\python.exe" "C:\Python311\python.exe" "%USERPROFILE%\.
 )
 if not defined PYTHON set PYTHON=python
 set PYTHONPATH=%HERE%;%HERE%\..\mca-launcher
-echo Using "%PYTHON%"
+set MAYA_VERSION=%~1
+if "%MAYA_VERSION%"=="" (
+    set MAYA_VERSION=2025
+    echo No version given - using 2025, which is the one this has been proven on.
+    echo Pass one to override: test_live.bat 2026
+)
+echo Using "%PYTHON%" and Maya %MAYA_VERSION%
 set LOG=%HERE%\tests\last_run.log
 echo Writing a copy of this run to %LOG%
-"%PYTHON%" "%HERE%\tests\test_live.py" %* > "%LOG%" 2>&1
+"%PYTHON%" -u "%HERE%\tests\test_live.py" %MAYA_VERSION% > "%LOG%" 2>&1
 type "%LOG%"
 echo.
 echo (saved to %LOG%)

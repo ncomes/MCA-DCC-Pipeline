@@ -36,7 +36,9 @@ logger = logging.getLogger('mca-mcp')
 #: Default MEL port. The Python port is always this plus one.
 DEFAULT_MEL_PORT = 7001
 
-#: Set to '0', 'false' or 'off' to keep the ports shut.
+#: Must be set to '1' for the ports to open. Off unless something asks for it: the launcher
+#: sets it for the Mayas it starts, so a Maya started any other way is untouched - and that
+#: is the escape hatch if this ever misbehaves during start-up.
 ENABLE_VARIABLE = 'MCA_MAYA_COMMAND_PORTS'
 
 #: Overrides the MEL port.
@@ -52,8 +54,8 @@ def enabled():
     :rtype: bool
     """
 
-    value = str(os.getenv(ENABLE_VARIABLE, '1')).strip().lower()
-    return value not in ('0', 'false', 'off', 'no')
+    value = str(os.getenv(ENABLE_VARIABLE, '')).strip().lower()
+    return value in ('1', 'true', 'on', 'yes')
 
 
 def mel_port():
@@ -83,7 +85,8 @@ def start(port=None, write_session=True):
         return _answer(True, 'The command ports were already open on this Maya.')
 
     if not enabled():
-        return _answer(False, '{} is set to off, so the command ports were not opened.'
+        return _answer(False, '{} is not set, so the command ports were not opened. The '
+                              'launcher sets it for the Mayas it starts.'
                               .format(ENABLE_VARIABLE))
 
     try:
