@@ -20,7 +20,8 @@ Each piece lands finished rather than copied and marked for later.
 | `startup/configs/common_env.py` | **dropped** — see below |
 | `pyqt/pygui.py`, `pyqt/qt_utils/windows.py` | ported, 21 checks |
 | `pyqt/` (the window classes, dialogs, helpers) | to do — needs `resources/` first |
-| `modifiers/`, `paths/paths.py`, `resources/` | next |
+| `modifiers/` | ported, 25 checks |
+| `paths/paths.py`, `resources/` | next |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
@@ -174,6 +175,22 @@ match stays as a fallback for windows built by tools that have not been ported y
 
 `get_mca_window_by_name` compared a widget to a string — `if win == name` — so it returned
 None every time it was ever called. It works now.
+
+## Decorators and the singleton
+
+`@timestamp` **broke every function it decorated**: it read `f.func_name`, a Python 2
+attribute, before the `__name__` fallback beside it, so it raised on every interpreter the
+framework runs on. `@repeater` ran its function on a timer thread with nothing catching
+exceptions, so one failure killed the thread and the repeating stopped silently.
+
+`@error` swallows what it catches — that is its job, keeping the DCC open — which means a
+function wearing it answers `None` when it fails. Worth knowing before putting it on
+anything whose answer is used for something else.
+
+The singleton had **two implementations with two registries**, and `clear_cls()` and
+`teardown()` only emptied one. Everything inheriting `SimpleSingleton` — the resource library
+among them — could not be cleared by anything, ever, so a framework restart kept the old
+project's paths. One registry now, and `shutdown()` empties it.
 
 ## Tests
 

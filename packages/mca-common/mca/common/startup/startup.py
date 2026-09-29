@@ -139,6 +139,15 @@ def shutdown(dcc=None, config_file=None, quiet=False):
 
     close_all_windows()
     run_package_startups(config_file=config_file, dcc=dcc, do_shutdown=True, quiet=quiet)
+
+    # Let go of every single-instance object. One that survives a restart is a tool holding
+    # the old project's paths - looking fine and answering wrong - and until now half of
+    # them could not be cleared at all.
+    from mca.common.modifiers import singleton
+
+    forgotten = singleton.teardown()
+    if forgotten and not quiet:
+        logger.info('Forgot %s single-instance object(s).', forgotten)
     config.remove_sys_packages(config_file=config_file, dcc=dcc, quiet=quiet)
     remove_framework_envs()
     config.reload_modules()
