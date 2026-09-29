@@ -25,7 +25,8 @@ Each piece lands finished rather than copied and marked for later.
 | `resources/` | ported, 22 checks — the art itself stays out, see `resources/README.md` |
 | `pyqt/common_windows.py`, `messages.py`, `file_dialogs.py` | ported, 26 checks |
 | `pyqt/` (menus, movies, highlighter, widget helpers) | ported, 29 checks — **pyqt done** |
-| `utils/` (15 modules) | next |
+| `utils/` (lists, dicts, strings, methods, pyutils, timedate) | ported, 51 checks |
+| `utils/` (folders, process, prefvars, project, pymaths, sounds, video) | next |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
@@ -274,6 +275,41 @@ the first action, and if that was not the one being asked for it gave up — eve
 the first was unremovable. It also logged to a logger of its own (`'mca_common'`, not the
 framework's), so its messages went somewhere else and ignored `MCA_LOGGING_LEVEL`, and a
 window with no menu bar crashed it.
+
+## The data helpers
+
+```python
+from mca.common.utils import lists, dict_utils, strings, pyutils, timedate
+```
+
+Small functions the whole framework leans on, which is why the bugs in them were worth
+finding:
+
+`lists.get_index_in_list` guarded a negative index with `len(seq) > abs(index)`, so
+`get_last_in_list(['hero'])` — one item, index `-1` — answered the default instead of
+`'hero'`. The last item of a one-item list could not be read, by any of the four functions
+built on it.
+
+`methods.get_properties` had its `append` **inside** `if filter_out:`, so the ordinary call —
+no filter, which is how everything calls it — always answered an empty list.
+
+`pyutils.ObjectDict` gives dictionary values attribute access, and for a nested dictionary it
+built a **new** `ObjectDict` and returned that, leaving the original untouched: every write to
+a nested value went into a temporary and was lost. It wraps in place now, so the nesting is
+real.
+
+`strings.clean_file_string` promised to make a string safe for a file name and replaced
+backslashes only — `/`, `:`, `*` and the rest went straight through.
+`get_numbers_from_string` answered a `map` object (truthy even when empty, and consumed by
+whoever looked at it first) of *single digits*, so `'spine_012'` gave `[0, 1, 2]` rather than
+`12`. `debug_object_string` read `obj.im_class`, which is Python 2.
+
+`timedate` padded a single-digit second on the wrong side — `second += '0'`, making `:50` out
+of `:05` — in two places, the third and fourth time that same line has turned up in this port.
+`get_time_zone` tested `if not time:` against the imported *module*, which is never falsy, so
+its `else` branch had never run. It uses the standard library's `zoneinfo` now and falls back
+to `pytz` only where `zoneinfo` is missing (Python 3.7, which is Maya 2022) — the old version
+imported `pytz` at module scope, a package nothing installs.
 
 ## Tests
 
