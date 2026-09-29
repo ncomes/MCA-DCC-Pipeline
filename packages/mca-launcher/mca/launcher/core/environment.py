@@ -63,6 +63,32 @@ def common_path(framework_path):
     return os.path.normpath(os.path.join(framework_path, 'mca-common', 'mca', 'common'))
 
 
+def mcp_package_folder():
+    """
+    Where mca-mcp is, when it is a sibling package rather than a pip install.
+
+    The launcher and the MCP server ship together and are versioned together, so the
+    launcher can simply look beside itself:
+    ``packages/mca-launcher`` and ``packages/mca-mcp`` share a parent.
+
+    Handing this to the DCC is what lets its start-up open the command ports - which is how
+    an assistant reaches Maya at all. Before, those ports were opened by a code editor's
+    plug-in, so closing the editor took the assistant's hands off.
+
+    :return: The folder to put on the DCC's PYTHONPATH, or '' when mca-mcp is not a sibling
+        (a pip install needs nothing here).
+    :rtype: str
+    """
+
+    # environment.py -> core -> launcher -> mca -> mca-launcher -> packages
+    packages = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))))))
+    candidate = os.path.join(packages, 'mca-mcp')
+    if os.path.isdir(os.path.join(candidate, 'mca', 'mcp')):
+        return os.path.normpath(candidate)
+    return ''
+
+
 def build(project_prefs, dcc_name, key, base=None):
     """
     The environment for one launch.
@@ -104,6 +130,14 @@ def build(project_prefs, dcc_name, key, base=None):
     variable = PATH_VARIABLE.get(dcc_name, 'PYTHONPATH')
     environment[variable] = _prepend(environment.get(variable, ''),
                                      startup_folder(framework_path, dcc_name))
+
+    # And the MCP package, so the DCC's start-up can open its command ports. Passed as a
+    # variable as well as on the path: the start-up script reads MCA_MCP_PATH by name, which
+    # keeps it working even where PYTHONPATH is rewritten by something else on the way in.
+    mcp_folder = mcp_package_folder()
+    if mcp_folder:
+        environment['MCA_MCP_PATH'] = mcp_folder
+        environment[variable] = _prepend(environment[variable], mcp_folder)
 
     if dcc_name == 'unreal' and str(key).lower().endswith('.uproject'):
         environment['UE_PROJECT_PATH'] = os.path.normpath(key)

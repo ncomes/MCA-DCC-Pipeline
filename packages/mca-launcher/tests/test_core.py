@@ -283,9 +283,22 @@ def body(suite):
                      if key.startswith('MCA_') and not value}))
     suite.check('PYTHONPATH keeps what the machine already had',
                 '/somebody/elses/path' in values['PYTHONPATH'], values['PYTHONPATH'])
+    parts = values['PYTHONPATH'].split(os.pathsep)
     suite.check('and the bootstrap folder is in front of it',
-                values['PYTHONPATH'].startswith(
-                    environment.startup_folder(framework, 'maya')), values['PYTHONPATH'])
+                environment.startup_folder(framework, 'maya') in parts
+                and parts.index(environment.startup_folder(framework, 'maya'))
+                < parts.index('/somebody/elses/path'), values['PYTHONPATH'])
+
+    # The MCP package rides along when it is a sibling, which is what lets Maya's start-up
+    # open the command ports an assistant reaches it through.
+    mcp_folder = environment.mcp_package_folder()
+    if mcp_folder:
+        suite.check('the MCP package is handed to the DCC as well, by name and on the path',
+                    values.get('MCA_MCP_PATH') == mcp_folder and mcp_folder in parts,
+                    str(values.get('MCA_MCP_PATH')))
+    else:
+        suite.check('with no sibling mca-mcp, nothing about it is added',
+                    'MCA_MCP_PATH' not in values, str(values.get('MCA_MCP_PATH')))
     suite.check('the launcher\'s own Qt variables are not passed on to the DCC',
                 'QT_PLUGIN_PATH' not in values, str(values.get('QT_PLUGIN_PATH')))
     suite.check('MCA_COMMON_PATH points at mca-common itself',

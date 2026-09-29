@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mca-mcp"
+version = "1.0.0"
+description = "MCP servers for driving Maya from an AI assistant, and the Maya-side bootstrap they need."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Nathan Comes" }]
+keywords = ["mcp", "maya", "dcc", "pipeline", "rigging", "automation"]
+
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+# Needed only by maya_launch, which starts Maya through the launcher. Everything else works
+# against a Maya that is already running, so this stays optional.
+launch = ["mca-launcher>=3.0.0"]
+
+[project.scripts]
+mca-maya-mcp = "mca.mcp.maya.server:main"
+
+[project.urls]
+Homepage = "https://github.com/ncomes/MCA-DCC-Pipeline"
+
+[tool.setuptools.packages.find]
+include = ["mca*"]
