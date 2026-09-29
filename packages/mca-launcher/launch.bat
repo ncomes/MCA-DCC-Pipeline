@@ -18,12 +18,12 @@ for %%P in (
     "C:\Python312\pythonw.exe"
     "%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe"
     "%LOCALAPPDATA%\Programs\Python\Python310\pythonw.exe"
-) do if exist %%P if not defined RUNNER set RUNNER=%%P
+) do if exist "%%~P" if not defined RUNNER set RUNNER=%%~P
 
 REM Failing that, any python at all - the console stays open, which is fine for debugging.
 if not defined RUNNER (
     for %%P in ("C:\Python310\python.exe" "C:\Python311\python.exe") do (
-        if exist %%P if not defined RUNNER set RUNNER=%%P
+        if exist "%%~P" if not defined RUNNER set RUNNER=%%~P
     )
 )
 if not defined RUNNER (
@@ -46,5 +46,5 @@ set QT_QPA_PLATFORM_PLUGIN_PATH=
 set QT_API=
 set PYTHONPATH=%HERE%
 
-start "" %RUNNER% -m mca.launcher
+start "" "%RUNNER%" -m mca.launcher
 endlocal

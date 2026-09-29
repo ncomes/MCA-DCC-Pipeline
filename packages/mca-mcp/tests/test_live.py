@@ -40,6 +40,18 @@ def check(label, condition, detail=''):
 
 
 def main(version=None):
+    print('Python:     {}'.format(sys.executable))
+    print('Version:    {}'.format(sys.version.split()[0]))
+    for module, why in (('yaml', 'reading the launcher\'s preferences'),
+                        ('mca.mcp.core.link', 'talking to Maya'),
+                        ('mca.launcher.api', 'starting Maya')):
+        try:
+            __import__(module)
+            print('  has {:<22} ({})'.format(module, why))
+        except Exception as error:
+            print('  MISSING {:<19} ({}) - {}'.format(module, why, error))
+    print('')
+
     from mca.mcp.core import control, link
 
     started_by_us = None
