@@ -11,8 +11,9 @@ Each piece lands finished rather than copied and marked for later.
 | `log.py` | ported, 22 checks |
 | `textio/` | ported, 27 checks — one engine, three doors |
 | `utils/fileio.py` | ported, 33 checks |
-| `paths/` | to do |
-| `startup/` | to do |
+| `paths/` | ported, 35 checks |
+| `startup/configs/consts.py` | ported — the name table both sides read |
+| `startup/` (the rest) | to do |
 | `pyqt/` | to do |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
@@ -55,6 +56,20 @@ Plain file operations. It does not import source control: the version this repla
 `mca.common.p4v.perforce` at module scope, so nothing could read a text file on a machine
 without Perforce. Checking a file out belongs with source control, which will depend on this
 rather than the other way round.
+
+## Paths
+
+```python
+from mca.common.paths import project_paths, path_utils
+```
+
+Every answer is a function call. The version this replaces also kept module-level snapshots
+of the environment taken *at import time* — inside a DCC, the moment the framework first
+loads — so switching project left them pointing at the old one for the rest of the session
+while the functions beside them answered correctly.
+
+`MCA_PREFS_ROOT` moves where preferences are read from, so the launcher's first-run sandbox
+and the suites never touch a real machine's.
 
 ## Tests
 

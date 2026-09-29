@@ -151,32 +151,15 @@ def documents_folder():
     """
     The user's Documents folder, asked of Windows rather than assumed.
 
-    ``~/Documents`` is a guess, and it is wrong on any machine where Documents has been
-    redirected - to OneDrive, or to a second drive.
-
     :return: The Documents folder.
     :rtype: str
     """
 
-    if sys.platform.startswith('win'):
-        try:
-            import ctypes
-            import ctypes.wintypes
+    # platforms imports nothing from the framework - not even this module - so logging can
+    # use it without an import cycle, and there is one copy of this rather than two.
+    from mca.common.utils import platforms
 
-            csidl_personal = 5          # My Documents
-            shgfp_type_current = 0
-
-            buffer = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
-            ctypes.windll.shell32.SHGetFolderPathW(
-                None, csidl_personal, None, shgfp_type_current, buffer)
-            if buffer.value:
-                return os.path.normpath(buffer.value)
-        except Exception as error:                                  # noqa: BLE001
-            # Logged rather than raised: not knowing where Documents is should not stop a
-            # DCC from starting.
-            MCA_LOGGER.warning('Could not ask Windows for the Documents folder: %s', error)
-
-    return os.path.normpath(os.path.join(os.path.expanduser('~'), 'Documents'))
+    return platforms.documents_folder()
 
 
 def preferences_folder():
