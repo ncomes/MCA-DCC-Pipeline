@@ -67,6 +67,28 @@ from mca import mcp as mca_mcp
 from mca.mcp.core import control, link
 
 
+if not hasattr(Server, 'list_tools'):
+    # mcp 1.x introduced the decorator API this server is written against. An older one
+    # imports cleanly and then dies on @server.list_tools(), which looks like a mistake in
+    # this file rather than a version problem - so say which version is installed.
+    try:
+        import importlib.metadata
+
+        _installed = importlib.metadata.version('mcp')
+    except Exception:
+        _installed = 'unknown'
+    sys.stderr.write(
+        '\n'
+        'mca-mcp cannot start: the installed "mcp" package is too old.\n'
+        '  interpreter : {}\n'
+        '  mcp version : {}\n'
+        '  needs       : 1.0 or newer (the Server.list_tools decorator API)\n'
+        '  fix         : "{}" -m pip install --upgrade "mcp>=1.2"\n'
+        '\n'.format(sys.executable, _installed, sys.executable))
+    sys.stderr.flush()
+    raise SystemExit(1)
+
+
 logger = logging.getLogger('mca-mcp')
 
 SERVER_NAME = 'MCAMaya'
