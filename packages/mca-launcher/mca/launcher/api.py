@@ -18,6 +18,7 @@ import os
 # mca imports
 from mca import launcher
 from mca.launcher.core import dccs, dependencies, environment, platform_paths, prefs, projects
+from mca.launcher.core.dccs import base
 from mca.launcher.core.contract import safe
 
 
@@ -138,13 +139,16 @@ def remove_project(name):
 # What can be launched
 # ---------------------------------------------------------------------------- #
 @safe
-def dcc_targets(dcc=None, project=None):
+def dcc_targets(dcc=None, project=None, include_missing=True):
     """
     What is installed on this machine, and what was picked last time.
 
     :param str dcc: One DCC name, or None for all of them.
     :param str project: The project whose remembered choice to report. None uses the current
         one, and no project at all is fine - the answer is then just what is installed.
+    :param bool include_missing: Also list the versions this launcher supports that are not
+        installed, each marked ``installed: False``. They cannot be launched; they can be
+        installed.
     :return: Response whose result is a list of DCC entries.
     :rtype: dict
     """
@@ -152,14 +156,21 @@ def dcc_targets(dcc=None, project=None):
     wanted = [dccs.get(dcc)] if dcc else list(dccs.DCCS)
 
     selections = None
+    installers = ''
     project_name = _resolve_project(project, required=False)
     if project_name:
         selections = prefs.Selections.load(project_name)
+        # Read once, not once per DCC: it is a folder test, and there are three of them.
+        installers = projects.installers_root(prefs.ProjectPrefs.load(project_name))
 
     listing = []
     for one in wanted:
-        targets = [target.as_dict() for target in one.targets()]
-        keys = [target['key'] for target in targets]
+        # Everything the launcher knows about, not only what is here: a version that is
+        # supported but missing should be visible and offerable, not absent. That includes
+        # versions only the project's installer folder knows about.
+        targets = [target.as_dict() for target in
+                   (one.available(installers) if include_missing else one.targets())]
+        keys = [target['key'] for target in targets if target['installed']]
         listing.append({
             'dcc': one.name,
             'label': one.label,
@@ -169,17 +180,20 @@ def dcc_targets(dcc=None, project=None):
                                                                            else ''),
             'unreal_projects': (selections.unreal_projects
                                 if selections and one.name == 'unreal' else []),
+            'installers': installers,
         })
 
-    total = sum(len(one['targets']) for one in listing)
+    total = sum(len([t for t in one['targets'] if t['installed']]) for one in listing)
     if not total:
         return listing, ('Nothing installed was found. The launcher reads the registry, so '
                          'this means Maya, MotionBuilder and Unreal are not installed on '
                          'this machine - or are installed somewhere the registry does not '
                          'know about.')
     return listing, ('Found {}.'.format(', '.join(
-        '{} {}'.format(one['label'], ', '.join(target['key'] for target in one['targets']))
-        for one in listing if one['targets'])))
+        '{} {}'.format(one['label'],
+                       ', '.join(target['key'] for target in one['targets']
+                                 if target['installed']))
+        for one in listing if any(t['installed'] for t in one['targets']))))
 
 
 @safe
@@ -200,6 +214,83 @@ def choose(dcc, key, project=None):
     selections.choose(dcc_object.name, key)
     selections.save(name)
     return {'dcc': dcc, 'key': key}, 'Remembered {} {} for {}.'.format(dcc, key, name)
+
+
+@safe
+def install_dcc(dcc, key=None, project=None):
+    """
+    Get a version the machine does not have.
+
+    Runs the project's own installer when it has one - a studio keeps them in a folder laid
+    out per DCC and version, and the installer is whatever it put there: an ``.exe``, a
+    ``.bat`` that copies a prepared build off a share, a ``.ps1``, an ``.msi``. Otherwise it
+    opens the vendor's download page. Doing nothing and saying "not installed" would be the
+    third option, and the least useful.
+
+    :param str dcc: The DCC name.
+    :param str key: The version wanted. None takes the newest the project can install, which
+        is what "Install" on a row with no installed version means.
+    :param str project: The project. None uses the current one.
+    :return: Response saying what was started or opened.
+    :rtype: dict
+    """
+
+    import subprocess
+    import webbrowser
+
+    dcc_object = dccs.get(dcc)
+
+    project_name = _resolve_project(project, required=False)
+    root = ''
+    if project_name:
+        root = projects.installers_root(prefs.ProjectPrefs.load(project_name))
+
+    if not key:
+        # Nothing chosen: offer the newest thing the project can actually install, and fall
+        # back to the newest version this launcher knows about so the download page is still
+        # a sensible one.
+        installable = dcc_object.installer_versions(root)
+        if installable:
+            key = sorted(installable, key=base.version_sort_key)[-1]
+        elif dcc_object.known_versions:
+            key = sorted(dcc_object.known_versions, key=base.version_sort_key)[-1]
+        else:
+            key = ''
+
+    if key and dcc_object.is_installed(key):
+        return ({'installed': True, 'dcc': dcc_object.name, 'key': key},
+                '{} {} is already installed.'.format(dcc_object.label, key))
+
+    installer = dcc_object.installer(key, root) if key else ''
+    if installer:
+        # The installer is the project's, not ours: start it the way its kind needs starting
+        # and let it do its own talking.
+        command = base.installer_command(installer)
+        logger.info('running installer: %s', ' '.join(command))
+        subprocess.Popen(command, cwd=os.path.dirname(installer))
+        return ({'installer': installer, 'command': command, 'dcc': dcc_object.name,
+                 'key': key},
+                'Started {} for {} {}. Once it finishes, press Refresh - the launcher reads '
+                'the registry, so the new version appears by itself.'
+                .format(os.path.basename(installer), dcc_object.label, key))
+
+    if not dcc_object.download_url:
+        raise ValueError('{} {} is not installed, and there is no installer for it in this '
+                         'project and no download page on record.'
+                         .format(dcc_object.label, key or 'anything'))
+
+    webbrowser.open(dcc_object.download_url)
+    if not root:
+        where = 'this project has no installer folder'
+    elif not dcc_object.installer_folder:
+        where = 'the launcher has no installer folder name for {}'.format(dcc_object.label)
+    else:
+        where = ('this project\'s installer folder has nothing for that version ({})'
+                 .format(os.path.join(root, dcc_object.installer_folder, str(key))))
+    return ({'url': dcc_object.download_url, 'dcc': dcc_object.name, 'key': key,
+             'installers_root': root},
+            'Opened the download page for {} {}, because {}. Install it, then press Refresh.'
+            .format(dcc_object.label, key or '', where))
 
 
 # ---------------------------------------------------------------------------- #

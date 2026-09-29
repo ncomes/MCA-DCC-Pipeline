@@ -161,4 +161,72 @@ LAUNCHER_STYLE = """
                         
                         background-color: rgba(255,182,0,0.6);
                     }
+                    
+                    /* The plate everything sits on, and the rows on it. */
+                    QFrame#main_frame
+                    {
+                        border: 6px solid rgba(128,129,129,255);
+                        background-color: rgba(37,36,37,255);
+                    }
+
+                    QFrame#dcc_row
+                    {
+                        background-color: rgba(52,52,52,255);
+                        border: 1px solid rgba(78,78,78,255);
+                        border-radius: 8px;
+                    }
+
+                    QLabel#dcc_name
+                    {
+                        color: white;
+                        font-family: impact;
+                        font-size: 17px;
+                    }
+
+                    QLabel#dcc_detail
+                    {
+                        color: rgba(168,168,168,255);
+                        font-size: 11px;
+                    }
+
+                    QPushButton#dcc_action
+                    {
+                        background-color: rgba(70,70,70,1);
+                        color: white;
+                        border-radius: 8px;
+                        padding: 7px;
+                    }
+
+                    QPushButton#dcc_action[mode="install"]
+                    {
+                        color: rgba(255,182,0,1);
+                    }
+
+                    QPushButton::hover#dcc_action
+                    {
+                        background-color: rgba(255,182,0,0.6);
+                    }
+
+                    QPushButton#refresh_pushButton
+                    {
+                        background-color: rgba(70,70,70,1);
+                        color: white;
+                        border-radius: 8px;
+                        padding: 5px;
+                    }
+
+                    QPushButton::hover#refresh_pushButton
+                    {
+                        background-color: rgba(255,182,0,0.6);
+                    }
+
+                    QPushButton::hover#unreal_pushButton
+                    {
+                        background-color: rgba(70,70,70,1);
+                    }
+
+                    QPushButton::pressed#unreal_pushButton
+                    {
+                        background-color: rgba(255,182,0,0.6);
+                    }
                     """

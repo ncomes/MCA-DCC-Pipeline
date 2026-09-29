@@ -29,3 +29,7 @@ class Maya(Dcc):
     interpreter_relatives = (r'bin\mayapy.exe',)
 
     startup_folder = 'maya'
+
+    download_url = 'https://www.autodesk.com/products/maya/free-trial'
+    installer_folder = 'Maya'
+    installer_name = 'MAYA_Install.exe'

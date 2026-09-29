@@ -23,6 +23,7 @@ harness.add_package_to_path()
 
 from mca.launcher.core import contract, dependencies, environment, fileio  # noqa: E402
 from mca.launcher.core import platform_paths, prefs, projects  # noqa: E402
+from mca.launcher.core.dccs import base as dcc_base  # noqa: E402
 
 
 def body(suite):
@@ -316,6 +317,134 @@ def body(suite):
     suite.check('unreal is told which project it is opening',
                 environment.build(project, 'unreal', os.path.join(suite.temp, 'g.uproject'),
                                   base={})['UE_PROJECT_PATH'].endswith('g.uproject'))
+
+    # ---------------------------------------------------------------- #
+    # Installers: whatever the studio actually keeps, for every DCC
+    # ---------------------------------------------------------------- #
+    class Pretend(dcc_base.Dcc):
+        """A DCC with an installer folder and nothing installed."""
+
+        name = 'pretend'
+        label = 'Pretend'
+        known_versions = ('2024', '2025')
+        installer_folder = 'Pretend'
+        installer_name = 'Pretend_Install.exe'
+        download_url = 'https://example.invalid/pretend'
+
+        def is_installed(self, version):
+            return False
+
+    pretend = Pretend()
+    installers = os.path.join(suite.temp, 'installers')
+
+    suite.check('with no installer folder, there is no installer and nothing breaks',
+                pretend.installer('2025', '') == '' and
+                pretend.installer_versions('') == [])
+
+    # A studio whose Maya arrives by batch file - which the old launcher could not express,
+    # because it looked for one hard coded .exe name and nothing else.
+    batch_folder = os.path.join(installers, 'Pretend', '2025')
+    os.makedirs(batch_folder)
+    batch = os.path.join(batch_folder, 'deploy_pretend.bat')
+    with open(batch, 'w') as opened:
+        opened.write('@echo off\n')
+
+    suite.check('a .bat is an installer',
+                pretend.installer('2025', installers) == os.path.normpath(batch),
+                pretend.installer('2025', installers))
+    suite.check('and the version it sits under is offered',
+                pretend.installer_versions(installers) == ['2025'],
+                str(pretend.installer_versions(installers)))
+
+    # And when the old convention is there as well, it still wins, so an existing studio
+    # layout behaves exactly as it did.
+    named = os.path.join(batch_folder, 'Pretend_Install.exe')
+    with open(named, 'w') as opened:
+        opened.write('')
+    suite.check('the name the old launcher expected is preferred when it is there',
+                pretend.installer('2025', installers) == os.path.normpath(named),
+                pretend.installer('2025', installers))
+
+    # A version nobody hard coded: the folder is the whole configuration.
+    unknown = os.path.join(installers, 'Pretend', '2027')
+    os.makedirs(unknown)
+    with open(os.path.join(unknown, 'install.ps1'), 'w') as opened:
+        opened.write('exit 0\n')
+    suite.check('a version only the studio knows about is offered too',
+                pretend.installer_versions(installers) == ['2025', '2027'],
+                str(pretend.installer_versions(installers)))
+    offered = [target.key for target in pretend.available(installers)]
+    suite.check('and it lands in the list, newest first, beside the ones in the code',
+                offered == ['2027', '2025', '2024'], str(offered))
+    # An empty folder is not a version anybody can install: offering it would turn Install
+    # into a button that does nothing.
+    os.makedirs(os.path.join(installers, 'Pretend', '2026'))
+    suite.check('a folder with nothing runnable in it is not offered',
+                '2026' not in pretend.installer_versions(installers),
+                str(pretend.installer_versions(installers)))
+
+    # What a not-installed version says about itself: where it would come from, rather than
+    # only that it is missing.
+    by_key = {target.key: target for target in pretend.available(installers)}
+    suite.check('a version with an installer says where the installer is',
+                by_key['2025'].detail == os.path.normpath(named), by_key['2025'].detail)
+    suite.check('and one without says where to download it',
+                by_key['2024'].detail == pretend.download_url, by_key['2024'].detail)
+
+    # -- how each kind gets run ---------------------------------------- #
+    suite.check('an .exe is run directly',
+                dcc_base.installer_command(r'c:\i\setup.exe') == [r'c:\i\setup.exe'],
+                str(dcc_base.installer_command(r'c:\i\setup.exe')))
+    command = dcc_base.installer_command(r'c:\i\go.bat')
+    suite.check('a .bat is run by the shell, as an argument rather than as a command line',
+                command[1:] == ['/c', r'c:\i\go.bat'], str(command))
+    suite.check('a .cmd too', dcc_base.installer_command('go.cmd')[1:] == ['/c', 'go.cmd'])
+    suite.check('an .msi goes through msiexec',
+                dcc_base.installer_command('m.msi') == ['msiexec', '/i', 'm.msi'],
+                str(dcc_base.installer_command('m.msi')))
+    suite.check('a .ps1 goes through powershell, with the policy it needs',
+                dcc_base.installer_command('s.ps1')[0] == 'powershell' and
+                '-ExecutionPolicy' in dcc_base.installer_command('s.ps1'),
+                str(dcc_base.installer_command('s.ps1')))
+    suite.check('a .py is run by this Python',
+                dcc_base.installer_command('s.py') == [sys.executable, 's.py'],
+                str(dcc_base.installer_command('s.py')))
+    suite.check('a shortcut is started by the shell',
+                'start' in dcc_base.installer_command('s.lnk'),
+                str(dcc_base.installer_command('s.lnk')))
+
+    # -- Unreal is not the exception it used to be --------------------- #
+    from mca.launcher.core import dccs
+
+    unreal = dccs.get('unreal')
+    engine_folder = os.path.join(installers, 'Unreal', '5.5')
+    os.makedirs(engine_folder)
+    deploy = os.path.join(engine_folder, 'deploy_engine.bat')
+    with open(deploy, 'w') as opened:
+        opened.write('@echo off\n')
+    suite.check('Unreal has an installer folder like everything else',
+                unreal.installer_folder == 'Unreal', unreal.installer_folder)
+    suite.check('so an engine a studio deploys with a .bat can be installed from the launcher',
+                unreal.installer('5.5', installers) == os.path.normpath(deploy),
+                unreal.installer('5.5', installers))
+    suite.check('and that engine is offered even when this machine has no Unreal at all',
+                '5.5' in [target.key for target in unreal.available(installers)],
+                str([target.key for target in unreal.available(installers)]))
+
+    # -- the installer folder a project points at ---------------------- #
+    installer_project = os.path.join(suite.temp, 'proj')
+    os.makedirs(installer_project)
+    saved = projects.save_project('Installers', installer_project, framework,
+                                 art_paths={'MCA_INSTALLERS_PATH': installers})
+    suite.check('a project can say where its installers are',
+                projects.installers_root(saved) == os.path.normpath(installers),
+                projects.installers_root(saved))
+    legacy_root = os.path.join(suite.temp, 'legacy')
+    os.makedirs(os.path.join(legacy_root, 'Tools', 'DCC Launcher', 'DCCAppLaunchers'))
+    legacy = projects.save_project('Legacy', legacy_root, framework)
+    suite.check('and when it does not, the layout the old launcher assumed is still found',
+                projects.installers_root(legacy).endswith('DCCAppLaunchers'),
+                projects.installers_root(legacy))
 
     suite.note('checks_written', len(suite.checks))
 

@@ -139,17 +139,27 @@ def body(suite):
         label = 'Pretend'
         icon = 'default_icon.png'
         startup_folder = 'maya'
+        # 2026 is supported and not on this machine, which is the case the row has to show
+        # rather than hide: it appears in the dropdown, marked, and the button offers to get
+        # it.
+        known_versions = ('2024', '2025', '2026')
+        installer_folder = 'Pretend'
+        download_url = 'https://example.invalid/pretend'
+        here = ('2024', '2025')
         launched = []
 
+        def is_installed(self, version):
+            return str(version) in PretendDcc.here
+
         def targets(self):
-            return [LaunchTarget(self.name, '2025', 'Pretend 2025'),
-                    LaunchTarget(self.name, '2024', 'Pretend 2024')]
+            return [LaunchTarget(self.name, version, 'Pretend {}'.format(version))
+                    for version in reversed(PretendDcc.here)]
 
         def interpreter(self, version):
-            return sys.executable
+            return sys.executable if self.is_installed(version) else ''
 
         def executable(self, version):
-            return sys.executable
+            return sys.executable if self.is_installed(version) else ''
 
         def launch(self, key, environment):
             PretendDcc.launched.append(key)
@@ -164,12 +174,12 @@ def body(suite):
     try:
         main = launcher_window.LauncherWindow()
         suite.check('the main window builds', main is not None)
-        suite.check('and has a tile for the DCC that is installed', 'pretend' in main.tiles)
+        suite.check('and has a row for the DCC that is installed', 'pretend' in main.rows)
         suite.check('with the newest version selected',
-                    main.tiles['pretend'].current_key() == '2025',
-                    main.tiles['pretend'].current_key())
-        suite.check('and the project in the banner', main.banner.current_project() == 'Wayward',
-                    main.banner.current_project())
+                    main.rows['pretend'].current_key() == '2025',
+                    main.rows['pretend'].current_key())
+        suite.check('and the project in the project bar', main.project_bar.current_project() == 'Wayward',
+                    main.project_bar.current_project())
 
         # -- pressing launch when the install fails -------------------- #
         def failing_install(dcc, version, framework_path, interpreter, progress=None):
@@ -180,7 +190,7 @@ def body(suite):
                     'message': 'numpy could not be imported afterwards.'}
 
         dependencies.install = failing_install
-        main.tiles['pretend'].button.click()
+        main.rows['pretend'].button.click()
         suite.check('pressing a DCC whose dependencies will not install does not start it',
                     not PretendDcc.launched, str(PretendDcc.launched))
         suite.check('and complains, rather than leaving the artist guessing',
@@ -208,17 +218,57 @@ def body(suite):
 
         dependencies.install = working_install
         shown['complain'] = []
-        main.tiles['pretend'].button.click()
+        main.rows['pretend'].button.click()
         suite.check('with the install working, pressing it starts the DCC',
                     PretendDcc.launched == ['2025'], str(PretendDcc.launched))
         suite.check('and nothing is complained about', not shown['complain'],
                     str(shown['complain']))
 
         # -- the version dropdown ------------------------------------- #
-        main.tiles['pretend'].versions.setCurrentIndex(1)
-        suite.check('changing the version remembers it',
+        row = main.rows['pretend']
+        suite.check('the dropdown offers the version that is not installed too',
+                    [key for key in row.keys] == ['2026', '2025', '2024'], str(row.keys))
+        suite.check('and marks it, so nobody wonders why it will not start',
+                    'not installed' in row.versions.itemText(0),
+                    row.versions.itemText(0))
+        suite.check('and the row says what is here',
+                    '2025' in row.detail_label.text(), row.detail_label.text())
+
+        row.versions.setCurrentIndex(2)
+        suite.check('changing to another installed version remembers it',
                     prefs.Selections.load('Wayward').dccs.get('pretend') == '2024',
                     str(prefs.Selections.load('Wayward').dccs))
+
+        # -- the button's job changes with what is selected ------------- #
+        asked = []
+        real_install_dcc = api.install_dcc
+        api.install_dcc = lambda dcc, key=None, project=None: (
+            asked.append((dcc, key)) or {'ok': True, 'result': {'url': 'x'},
+                                         'message': 'opened the download page.'})
+        try:
+            row.versions.setCurrentIndex(0)
+            suite.check('selecting a version that is not here turns Launch into Install',
+                        row.action.text() == 'Install', row.action.text())
+            before = list(PretendDcc.launched)
+            row.action.click()
+            suite.check('and pressing it installs rather than launching',
+                        asked == [('pretend', '2026')] and PretendDcc.launched == before,
+                        '{} / {}'.format(asked, PretendDcc.launched))
+            suite.check('selecting one that is here turns it back into Launch',
+                        (row.versions.setCurrentIndex(1) or row.action.text()) == 'Launch',
+                        row.action.text())
+
+            # A version nobody chose: the row asks for '' and the API picks.
+            PretendDcc.here = ()
+            main.refresh()
+            asked[:] = []
+            suite.check('with nothing installed the row still offers to install',
+                        main.rows['pretend'].action.text() == 'Install',
+                        main.rows['pretend'].action.text())
+        finally:
+            api.install_dcc = real_install_dcc
+            PretendDcc.here = ('2024', '2025')
+            main.refresh()
 
         # -- the menu ------------------------------------------------- #
         shown['tell'] = []
@@ -245,7 +295,7 @@ def body(suite):
         suite.check('Remove Project removes it', not prefs.project_names(),
                     str(prefs.project_names()))
         suite.check('and the window redraws with nothing in it',
-                    main.banner.current_project() == '', main.banner.current_project())
+                    main.project_bar.current_project() == '', main.project_bar.current_project())
 
         main.close()
     finally:

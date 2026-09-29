@@ -28,3 +28,7 @@ class MotionBuilder(Dcc):
     interpreter_relatives = (r'bin\x64\mobupy.exe', r'bin\x64\python\python.exe')
 
     startup_folder = 'mobu'
+
+    download_url = ('https://www.autodesk.com/products/motionbuilder/free-trial')
+    installer_folder = 'Mobu'
+    installer_name = 'Mobu_Install.exe'

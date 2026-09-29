@@ -160,6 +160,31 @@ def default_art_paths(art_path):
             for key, folder in prefs.ART_DEFAULTS}
 
 
+def installers_root(project_prefs):
+    """
+    Where this project keeps DCC installers, if it keeps any.
+
+    Checked in order: what the project says, then the layout the old launcher assumed
+    (``<project root>/Tools/DCC Launcher/DCCAppLaunchers``) so an existing studio setup keeps
+    working without being told about it again.
+
+    :param prefs.ProjectPrefs project_prefs: The project.
+    :return: The folder, or '' when there is not one.
+    :rtype: str
+    """
+
+    stated = str(project_prefs.values.get('MCA_INSTALLERS_PATH') or '').strip()
+    if stated and os.path.isdir(stated):
+        return os.path.normpath(stated)
+
+    root = project_prefs.project_root
+    if root:
+        legacy = os.path.join(root, 'Tools', 'DCC Launcher', 'DCCAppLaunchers')
+        if os.path.isdir(legacy):
+            return os.path.normpath(legacy)
+    return ''
+
+
 def remove_project(name):
     """
     Forget a project. Deletes its preferences folder and nothing else - no art, no code.

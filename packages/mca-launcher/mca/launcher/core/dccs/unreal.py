@@ -10,6 +10,9 @@ Unreal is the odd one, and the abstraction has to bend for it rather than preten
 - Its Python is the engine's bundled one:
   ``Engine/Binaries/ThirdParty/Python3/Win64/python.exe`` - 3.11.8 in 5.5, with pip.
 
+An engine can be installed from the project's installer folder the same way Maya can -
+``<installers>/Unreal/5.5/`` holding whatever the studio deploys with, ``.bat`` included.
+
 The old launcher started a project with ``Popen([uproject], shell=True)``, which hands the
 path to the shell and hopes the file association is right. It also means the environment it
 so carefully built may or may not reach the editor. Starting ``UnrealEditor.exe`` with the
@@ -44,6 +47,16 @@ class Unreal(Dcc):
     interpreter_relatives = (r'Engine\Binaries\ThirdParty\Python3\Win64\python.exe',)
 
     startup_folder = 'unreal'
+
+    download_url = 'https://www.unrealengine.com/en-US/download'
+
+    # Unreal gets an installer folder like everything else. The old launcher had none - Maya
+    # and MotionBuilder could be installed from the project, Unreal could not be installed at
+    # all - and a studio that deploys its engine with a batch file (a source build copied off
+    # a share, a launcher script that sets the licence up first) had nowhere to put it. The
+    # version folders here are engine versions: 'Unreal/5.5/deploy.bat'.
+    installer_folder = 'Unreal'
+    installer_name = ''
 
     # ------------------------------------------------------------------ #
     # Engines

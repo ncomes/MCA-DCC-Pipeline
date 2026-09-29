@@ -37,17 +37,15 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-# third party imports
-#
-# An MCP client starts this with whatever interpreter its config names, and a missing `mcp`
-# there produces a bare ModuleNotFoundError repeated once per reconnection attempt - a log
-# full of tracebacks that names the symptom and not the fix. Say which interpreter is short
-# of what, and how to fix it, on stderr, which is where a client shows a server's output.
+# mca imports
+from mca import mcp as mca_mcp
+from mca.mcp.core import control, link
+
+# The SDK is reached only through the shim, which handles the 1.x / 2.x split. Importing it
+# here rather than the SDK directly means a missing or surprising mcp package produces one
+# sentence, not a traceback per reconnection attempt.
 try:
-    import mcp.server.stdio
-    from mcp.server.lowlevel import NotificationOptions, Server
-    from mcp.server.models import InitializationOptions
-    from mcp.types import TextContent, Tool
+    from mca.mcp.core import mcp_compat
 except ImportError as _error:
     sys.stderr.write(
         '\n'
@@ -56,35 +54,8 @@ except ImportError as _error:
         '  missing     : {}\n'
         '  fix         : "{}" -m pip install mcp\n'
         '\n'
-        'This server also needs PyYAML for maya_launch, which reads the launcher\'s\n'
-        'preferences. One interpreter should have both.\n'
+        'maya_launch additionally needs PyYAML, to read the launcher\'s preferences.\n'
         '\n'.format(sys.executable, _error, sys.executable))
-    sys.stderr.flush()
-    raise SystemExit(1)
-
-# mca imports
-from mca import mcp as mca_mcp
-from mca.mcp.core import control, link
-
-
-if not hasattr(Server, 'list_tools'):
-    # mcp 1.x introduced the decorator API this server is written against. An older one
-    # imports cleanly and then dies on @server.list_tools(), which looks like a mistake in
-    # this file rather than a version problem - so say which version is installed.
-    try:
-        import importlib.metadata
-
-        _installed = importlib.metadata.version('mcp')
-    except Exception:
-        _installed = 'unknown'
-    sys.stderr.write(
-        '\n'
-        'mca-mcp cannot start: the installed "mcp" package is too old.\n'
-        '  interpreter : {}\n'
-        '  mcp version : {}\n'
-        '  needs       : 1.0 or newer (the Server.list_tools decorator API)\n'
-        '  fix         : "{}" -m pip install --upgrade "mcp>=1.2"\n'
-        '\n'.format(sys.executable, _installed, sys.executable))
     sys.stderr.flush()
     raise SystemExit(1)
 
@@ -97,7 +68,7 @@ SERVER_NAME = 'MCAMaya'
 #: because the description is the only documentation the assistant on the other end gets -
 #: and a vague one produces a tool call that does the wrong thing confidently.
 TOOLS = [
-    Tool(
+    dict(
         name='maya_status',
         description=(
             'List the Maya sessions running on this machine and whether each can be reached. '
@@ -105,16 +76,16 @@ TOOLS = [
             'version", "what scene", and "can I talk to it". Reaching a Maya requires the '
             'pipeline bootstrap, which opens its command port; a Maya started outside the '
             'pipeline will not appear.'),
-        inputSchema={'type': 'object', 'properties': {}, 'additionalProperties': False},
+        schema={'type': 'object', 'properties': {}, 'additionalProperties': False},
     ),
-    Tool(
+    dict(
         name='maya_launch',
         description=(
             'Start Maya through the MCA launcher and wait until it can be talked to. The '
             'launcher installs that version\'s Python dependencies first if they are missing, '
             'so the first start of a version can take several minutes. Returns the process '
             'id. Use maya_status afterwards if you need the port.'),
-        inputSchema={
+        schema={
             'type': 'object',
             'properties': {
                 'version': {'type': 'string',
@@ -128,13 +99,13 @@ TOOLS = [
             'additionalProperties': False,
         },
     ),
-    Tool(
+    dict(
         name='maya_quit',
         description=(
             'Close a running Maya. Refuses when the scene has unsaved changes unless save or '
             'force is set - which is deliberate: an assistant should not throw away '
             'somebody\'s work on a guess.'),
-        inputSchema={
+        schema={
             'type': 'object',
             'properties': {
                 'pid': {'type': 'integer', 'description': 'Which Maya, by process id.'},
@@ -147,14 +118,14 @@ TOOLS = [
             'additionalProperties': False,
         },
     ),
-    Tool(
+    dict(
         name='maya_execute',
         description=(
             'Run Python inside a running Maya and return what it produced. The script runs on '
             'Maya\'s main thread, so maya.cmds works normally. Set a variable named "result" '
             'to choose what comes back; anything printed is returned as well. This is the '
             'general tool - prefer it for anything the specific tools do not cover.'),
-        inputSchema={
+        schema={
             'type': 'object',
             'properties': {
                 'script': {'type': 'string', 'description': 'The Python to run.'},
@@ -167,38 +138,40 @@ TOOLS = [
             'additionalProperties': False,
         },
     ),
-    Tool(
+    dict(
         name='maya_run_file',
         description=(
             'Run a Python file from disk inside Maya. The file is read by Maya itself, so it '
             'can be any size - unlike maya_execute, which sends the source down a socket.'),
-        inputSchema={
+        schema={
             'type': 'object',
             'properties': {
                 'path': {'type': 'string', 'description': 'Absolute path to a .py file.'},
                 'pid': {'type': 'integer', 'description': 'Which Maya.'},
-                'timeout': {'type': 'number', 'default': 300},
+                'timeout': {'type': 'number', 'default': 300,
+                            'description': 'Seconds to wait. A file that builds a rig may '
+                                           'want several minutes.'},
             },
             'required': ['path'],
             'additionalProperties': False,
         },
     ),
-    Tool(
+    dict(
         name='maya_scene_info',
         description='What scene a Maya has open, whether it has unsaved changes, and what is '
                     'in it by node type.',
-        inputSchema={
+        schema={
             'type': 'object',
             'properties': {'pid': {'type': 'integer', 'description': 'Which Maya.'}},
             'additionalProperties': False,
         },
     ),
-    Tool(
+    dict(
         name='maya_open_scene',
         description=(
             'Open a scene file. Refuses when the current scene has unsaved changes unless '
             'force is set.'),
-        inputSchema={
+        schema={
             'type': 'object',
             'properties': {
                 'path': {'type': 'string', 'description': 'Absolute path to a .ma or .mb.'},
@@ -210,10 +183,10 @@ TOOLS = [
             'additionalProperties': False,
         },
     ),
-    Tool(
+    dict(
         name='maya_save_scene',
         description='Save the open scene, optionally to a new path.',
-        inputSchema={
+        schema={
             'type': 'object',
             'properties': {
                 'path': {'type': 'string',
@@ -223,11 +196,11 @@ TOOLS = [
             'additionalProperties': False,
         },
     ),
-    Tool(
+    dict(
         name='maya_new_scene',
         description=('Start a new scene. Refuses when the current one has unsaved changes '
                      'unless force is set.'),
-        inputSchema={
+        schema={
             'type': 'object',
             'properties': {
                 'force': {'type': 'boolean', 'default': False},
@@ -238,51 +211,35 @@ TOOLS = [
     ),
 ]
 
-server = Server(SERVER_NAME)
-
-
-@server.list_tools()
-async def list_tools():
-    """
-    :return: Every tool this server offers.
-    :rtype: list(Tool)
-    """
-
-    return TOOLS
-
-
-@server.call_tool()
-async def call_tool(name, arguments):
+async def dispatch(name, arguments):
     """
     Run one tool and answer with text.
 
-    Every failure comes back as a sentence rather than an exception, because the client on
-    the other end is a language model: a traceback tells it that something broke, while
-    "no running Maya was found - start one with maya_launch" tells it what to do next.
+    Every failure comes back as a sentence rather than an exception, because the caller is a
+    language model: a traceback says something broke, while "no running Maya was found -
+    start one with maya_launch" says what to do next.
 
     :param str name: The tool.
     :param dict arguments: Its arguments.
-    :return: The answer.
-    :rtype: list(TextContent)
+    :return: What to tell the caller.
+    :rtype: str
     """
 
     arguments = arguments or {}
     try:
         handler = HANDLERS[name]
     except KeyError:
-        return _text('There is no tool called {}. This server offers: {}.'
-                     .format(name, ', '.join(sorted(HANDLERS))))
+        return ('There is no tool called {}. This server offers: {}.'
+                .format(name, ', '.join(sorted(HANDLERS))))
 
     try:
         # Each handler blocks on sockets and on Maya. Off the event loop it goes, so a slow
         # scene open does not stall the whole server.
-        answer = await asyncio.get_event_loop().run_in_executor(
+        return await asyncio.get_event_loop().run_in_executor(
             None, lambda: handler(arguments))
     except Exception as error:
         logger.exception('%s failed', name)
-        return _text('{} failed: {}'.format(name, error))
-
-    return _text(answer)
+        return '{} failed: {}'.format(name, error)
 
 
 # ---------------------------------------------------------------------------- #
@@ -436,16 +393,6 @@ def _render(answer):
     return '\n\n'.join(pieces)
 
 
-def _text(message):
-    """
-    :param str message: What to say.
-    :return: It, as MCP content.
-    :rtype: list(TextContent)
-    """
-
-    return [TextContent(type='text', text=str(message))]
-
-
 # ---------------------------------------------------------------------------- #
 # Running
 # ---------------------------------------------------------------------------- #
@@ -482,16 +429,7 @@ def _setup_logging(level):
 async def run():
     """Serve MCP over stdio until the client goes away."""
 
-    async with mcp.server.stdio.stdio_server() as (reader, writer):
-        await server.run(
-            reader, writer,
-            InitializationOptions(
-                server_name=SERVER_NAME,
-                server_version=mca_mcp.__version__,
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(), experimental_capabilities={}),
-            ),
-        )
+    await mcp_compat.serve(SERVER_NAME, mca_mcp.__version__, TOOLS, dispatch)
 
 
 def main(argv=None):

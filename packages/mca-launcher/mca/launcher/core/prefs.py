@@ -53,6 +53,10 @@ PROJECT_KEYS = {
     'MCA_ENVIRONMENT_PATH': '',
     'MCA_VEHICLE_PATH': '',
     'MCA_COMMON_TOOLS': '',
+    # Optional: a folder of DCC installers, laid out as <root>/<Dcc>/<version>/. A
+    # studio has one; somebody cloning this repo does not, and gets the vendor's
+    # download page instead.
+    'MCA_INSTALLERS_PATH': '',
 }
 
 #: The art folders, in the order a setup window should show them, and the folder name each

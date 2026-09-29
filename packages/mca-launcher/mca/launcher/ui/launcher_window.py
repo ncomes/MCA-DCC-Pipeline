@@ -1,10 +1,16 @@
 """
-The main window: pick a project, press a DCC, get a DCC with working tools.
+The main window: pick a project, pick a version, get a DCC with working tools.
 
 Every button is two or three lines - resolve what was pressed, call the API, show what came
 back. That is the whole design: if a button here needed to work something out for itself,
 the API would be missing a function and the command line would be less capable than the
 window.
+
+The layout is **one row per application**, on the bordered plate the art was drawn for. The
+first arrangement used tiles - icon over dropdown over label, three across - and it read
+badly: the labels collided with the icons, versions could not be compared down a column, and
+two thirds of the window was empty. A row reads left to right in the order the questions get
+asked: which application, where it is, which version, go.
 """
 
 # python imports
@@ -14,13 +20,13 @@ import subprocess
 
 # PySide6 imports
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMainWindow, QSizePolicy
-from PySide6.QtWidgets import QSpacerItem, QVBoxLayout, QWidget
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow
+from PySide6.QtWidgets import QPushButton, QSizePolicy, QSpacerItem, QVBoxLayout, QWidget
 
 # mca imports
 from mca.launcher import api
-from mca.launcher.core import logs, platform_paths, resources
+from mca.launcher.core import platform_paths, resources
 from mca.launcher.ui import dialogs, style, widgets
 
 
@@ -40,40 +46,62 @@ class LauncherWindow(QMainWindow):
         self.setMinimumSize(style.WINDOW_WIDTH, style.WINDOW_HEIGHT)
         style.apply(self)
 
-        self.tiles = {}
+        self.rows = {}
         self.setup_window = None
 
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(10, 10, 10, 10)
 
-        self.banner = widgets.Banner()
-        layout.addWidget(self.banner)
+        # The bordered plate everything sits on. Without it the rows float on the window's
+        # background with nothing holding them together, which is what the old launcher's
+        # main_frame was for.
+        self.frame = QFrame()
+        self.frame.setObjectName('main_frame')
+        outer.addWidget(self.frame)
 
-        self.tile_row = QHBoxLayout()
-        layout.addLayout(self.tile_row)
+        layout = QVBoxLayout(self.frame)
+        layout.setContentsMargins(12, 12, 12, 8)
+        layout.setSpacing(6)
+
+        self.project_bar = widgets.ProjectBar()
+        layout.addWidget(self.project_bar)
+
+        self.row_layout = QVBoxLayout()
+        self.row_layout.setSpacing(6)
+        layout.addLayout(self.row_layout)
 
         layout.addItem(QSpacerItem(20, 20, QSizePolicy.Policy.Minimum,
                                    QSizePolicy.Policy.Expanding))
 
+        # -- the bottom line: what just happened, Refresh, and the mark ------ #
         bottom = QHBoxLayout()
         self.status = QLabel('')
         self.status.setWordWrap(True)
         bottom.addWidget(self.status, stretch=1)
-        logo = resources.icon('corner_logo.png')
-        if logo:
-            picture = QLabel()
-            picture.setPixmap(QPixmap(logo))
-            bottom.addWidget(picture, alignment=Qt.AlignmentFlag.AlignRight)
+
+        self.refresh_button = QPushButton('Refresh')
+        self.refresh_button.setObjectName('refresh_pushButton')
+        self.refresh_button.setFixedWidth(86)
+        self.refresh_button.setToolTip('Read the machine again - after installing a version, '
+                                      'or adding one to the project')
+        bottom.addWidget(self.refresh_button, alignment=Qt.AlignmentFlag.AlignBottom)
+
+        mark = widgets.wordmark(200)
+        if mark:
+            bottom.addWidget(mark, alignment=Qt.AlignmentFlag.AlignRight |
+                             Qt.AlignmentFlag.AlignBottom)
         layout.addLayout(bottom)
 
         self._build_menu()
-        self._build_tiles()
+        self._build_rows()
 
-        self.banner.projects.currentIndexChanged.connect(self._project_changed)
-        self.banner.add_button.clicked.connect(self._add_project)
-        self.banner.edit_button.clicked.connect(self._edit_project)
-        self.banner.remove_button.clicked.connect(self._remove_project)
+        self.project_bar.projects.currentIndexChanged.connect(self._project_changed)
+        self.project_bar.add_button.clicked.connect(self._add_project)
+        self.project_bar.edit_button.clicked.connect(self._edit_project)
+        self.project_bar.remove_button.clicked.connect(self._remove_project)
+        self.refresh_button.clicked.connect(self.refresh)
 
         self.refresh()
 
@@ -82,6 +110,12 @@ class LauncherWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     def _build_menu(self):
         tools = self.menuBar().addMenu('&Tools')
+
+        action = tools.addAction('Refresh')
+        action.setStatusTip('Read the machine again')
+        action.triggered.connect(self.refresh)
+
+        tools.addSeparator()
 
         action = tools.addAction('Check Dependencies')
         action.setStatusTip('Report whether the selected DCC has what the framework needs')
@@ -103,7 +137,7 @@ class LauncherWindow(QMainWindow):
         action = tools.addAction('Open Dependencies Folder')
         action.triggered.connect(self._open_dependencies)
 
-    def _build_tiles(self):
+    def _build_rows(self):
         listing = api.dcc_targets()
         if not listing['ok']:
             self._say(listing['message'], ok=False)
@@ -111,18 +145,16 @@ class LauncherWindow(QMainWindow):
 
         for entry in listing['result']:
             if entry['dcc'] == 'unreal':
-                tile = widgets.UnrealTile(entry['dcc'], entry['label'], entry['icon'])
-                tile.add_requested.connect(self._add_unreal_project)
-                tile.remove_requested.connect(self._remove_unreal_project)
+                row = widgets.UnrealRow(entry['dcc'], entry['label'], entry['icon'])
+                row.add_requested.connect(self._add_unreal_project)
+                row.remove_requested.connect(self._remove_unreal_project)
             else:
-                tile = widgets.DccTile(entry['dcc'], entry['label'], entry['icon'])
-            tile.launch_requested.connect(self._launch)
-            tile.choice_changed.connect(self._remember_choice)
-            self.tiles[entry['dcc']] = tile
-            self.tile_row.addWidget(tile)
-
-        self.tile_row.addItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding,
-                                          QSizePolicy.Policy.Minimum))
+                row = widgets.DccRow(entry['dcc'], entry['label'], entry['icon'])
+            row.launch_requested.connect(self._launch)
+            row.install_requested.connect(self._install)
+            row.choice_changed.connect(self._remember_choice)
+            self.rows[entry['dcc']] = row
+            self.row_layout.addWidget(row)
 
     # ------------------------------------------------------------------ #
     # Showing what is there
@@ -136,31 +168,50 @@ class LauncherWindow(QMainWindow):
             return
 
         names = [one['name'] for one in listing['result']['projects']]
-        self.banner.set_projects(names, listing['result']['current'])
-        self._refresh_tiles()
+        self.project_bar.set_projects(names, listing['result']['current'])
+        self._refresh_rows()
 
         if not names:
-            self._say('No projects yet. Press Add Project to set one up.')
+            self._say('No projects yet. Press Add to set one up.')
         else:
             self._say(listing['message'])
 
-    def _refresh_tiles(self):
-        project = self.banner.current_project() or None
+    def _refresh_rows(self):
+        project = self.project_bar.current_project() or None
         listing = api.dcc_targets(project=project)
         if not listing['ok']:
             self._say(listing['message'], ok=False)
             return
 
         for entry in listing['result']:
-            tile = self.tiles.get(entry['dcc'])
-            if not tile:
+            row = self.rows.get(entry['dcc'])
+            if not row:
                 continue
             if entry['dcc'] == 'unreal':
                 projects = api.unreal_projects(project=project)
-                tile.set_projects(projects['result'] if projects['ok'] else [])
+                row.set_projects(projects['result'] if projects['ok'] else [],
+                                 entry['targets'])
             else:
-                tile.set_targets([target['key'] for target in entry['targets']],
-                                 entry['chosen'])
+                row.set_targets(entry['targets'], entry['chosen'])
+                row.set_detail(self._detail_for(entry))
+
+    @staticmethod
+    def _detail_for(entry):
+        """
+        The small line under an application's name.
+
+        :param dict entry: One entry from ``api.dcc_targets``.
+        :return: What to show.
+        :rtype: str
+        """
+
+        installed = [target['key'] for target in entry['targets'] if target['installed']]
+        if installed:
+            return 'installed: {}'.format(', '.join(installed))
+        offered = len(entry['targets'])
+        if offered:
+            return 'none installed - {} version(s) can be installed'.format(offered)
+        return 'not found on this machine'
 
     # ------------------------------------------------------------------ #
     # Buttons
@@ -170,7 +221,7 @@ class LauncherWindow(QMainWindow):
             self._say('Nothing is selected for {}.'.format(dcc), ok=False)
             return
 
-        project = self.banner.current_project() or None
+        project = self.project_bar.current_project() or None
 
         # The dependency check happens inside api.launch, so it cannot be skipped. The
         # window's only job is to give it somewhere to report progress, because a first run
@@ -196,28 +247,52 @@ class LauncherWindow(QMainWindow):
             return
         self._say(response['message'])
 
+    def _install(self, dcc, key):
+        """
+        Get a version the machine does not have.
+
+        The API decides where it comes from - the project's installer folder if it has one
+        for that version, whatever kind of file the studio put there, and otherwise the
+        vendor's download page.
+
+        :param str dcc: The DCC name.
+        :param str key: The version wanted. '' means "the newest that can be installed".
+        """
+
+        project = self.project_bar.current_project() or None
+        response = api.install_dcc(dcc, key, project=project)
+        if not response['ok']:
+            dialogs.complain('Install', response['message'], self)
+            self._say(response['message'], ok=False)
+            return
+
+        dialogs.tell('Install', response['message'], self,
+                     response['result'].get('installer', '') or
+                     response['result'].get('url', ''))
+        self._say(response['message'])
+
     def _remember_choice(self, dcc, key):
-        project = self.banner.current_project() or None
+        project = self.project_bar.current_project() or None
         response = api.choose(dcc, key, project=project)
         if not response['ok']:
             logger.warning(response['message'])
 
     def _project_changed(self):
-        name = self.banner.current_project()
+        name = self.project_bar.current_project()
         if not name:
             return
         response = api.set_current_project(name)
         if not response['ok']:
             self._say(response['message'], ok=False)
             return
-        self._refresh_tiles()
+        self._refresh_rows()
         self._say('Project is {}.'.format(name))
 
     def _add_project(self):
         self._open_setup(None)
 
     def _edit_project(self):
-        name = self.banner.current_project()
+        name = self.project_bar.current_project()
         if not name:
             self._say('There is no project to edit.', ok=False)
             return
@@ -237,7 +312,7 @@ class LauncherWindow(QMainWindow):
         self._say('Saved {}.'.format(name))
 
     def _remove_project(self):
-        name = self.banner.current_project()
+        name = self.project_bar.current_project()
         if not name:
             return
         if not dialogs.ask('Remove Project?',
@@ -253,7 +328,7 @@ class LauncherWindow(QMainWindow):
     # Unreal
     # ------------------------------------------------------------------ #
     def _add_unreal_project(self):
-        project = self.banner.current_project() or None
+        project = self.project_bar.current_project() or None
         start_in = ''
         listing = api.unreal_projects(project=project)
         if listing['ok'] and listing['result']:
@@ -267,17 +342,17 @@ class LauncherWindow(QMainWindow):
         if not response['ok']:
             dialogs.complain('Add Unreal Project', response['message'], self)
             return
-        self._refresh_tiles()
+        self._refresh_rows()
         self._say(response['message'])
 
     def _remove_unreal_project(self, path):
-        project = self.banner.current_project() or None
+        project = self.project_bar.current_project() or None
         if not dialogs.ask('Remove Unreal Project?',
                            'Forget this project?\n\n{}\n\nThe project itself is not '
                            'touched.'.format(path), self):
             return
         response = api.remove_unreal_project(path, project=project)
-        self._refresh_tiles()
+        self._refresh_rows()
         self._say(response['message'])
 
     # ------------------------------------------------------------------ #
@@ -285,28 +360,29 @@ class LauncherWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     def _selected(self):
         """
-        Whichever tile has something selected, in the order the tiles were built.
+        Whichever row has an installed version selected, in the order they were built.
 
-        Built from ``self.tiles`` rather than a written-out list of DCC names: the old
-        version named maya, mobu and unreal, so the Tools menu did nothing at all for any
-        DCC added later - silently, because "nothing is selected" is a plausible-looking
-        message. Caught by the window suite the first time it ran.
+        Built from ``self.rows`` rather than a written-out list of DCC names: the old version
+        named maya, mobu and unreal, so the Tools menu did nothing at all for any DCC added
+        later - silently, because "nothing is selected" is a plausible-looking message.
+        Caught by the window suite the first time it ran.
 
         :return: (dcc, key), or ('', '').
         :rtype: tuple(str, str)
         """
 
-        for name, tile in self.tiles.items():
-            if tile.current_key():
-                return name, tile.current_key()
+        for name, row in self.rows.items():
+            if row.current_key() and row.current_is_installed():
+                return name, row.current_key()
         return '', ''
 
     def _check_dependencies(self):
         dcc, key = self._selected()
         if not dcc:
-            self._say('Nothing is selected to check.', ok=False)
+            self._say('Nothing installed is selected to check.', ok=False)
             return
-        response = api.dependency_status(dcc, key, project=self.banner.current_project() or None)
+        response = api.dependency_status(dcc, key,
+                                        project=self.project_bar.current_project() or None)
         detail = ''
         if response['ok']:
             result = response['result']
@@ -317,7 +393,7 @@ class LauncherWindow(QMainWindow):
     def _reinstall_dependencies(self):
         dcc, key = self._selected()
         if not dcc:
-            self._say('Nothing is selected to reinstall.', ok=False)
+            self._say('Nothing installed is selected to reinstall.', ok=False)
             return
         if not dialogs.ask('Reinstall Dependencies?',
                            'Wipe and reinstall the Python packages for {} {}?\n\nThis takes '
@@ -329,16 +405,16 @@ class LauncherWindow(QMainWindow):
                                         parent=self)
         window.show()
         try:
-            response = api.ensure_dependencies(dcc, key,
-                                              project=self.banner.current_project() or None,
-                                              force=True, progress=window.say)
+            response = api.ensure_dependencies(
+                dcc, key, project=self.project_bar.current_project() or None,
+                force=True, progress=window.say)
         finally:
             window.finish()
         dialogs.show_response(response, self, title='Dependencies')
         self._say(response['message'], ok=response['ok'])
 
     def _doctor(self):
-        response = api.doctor(project=self.banner.current_project() or None)
+        response = api.doctor(project=self.project_bar.current_project() or None)
         if not response['ok']:
             dialogs.complain('Diagnose', response['message'], self)
             return
@@ -407,7 +483,7 @@ class LauncherWindow(QMainWindow):
         :param event: The close event.
         """
 
-        name = self.banner.current_project()
+        name = self.project_bar.current_project()
         if name:
             api.set_current_project(name)
         super().closeEvent(event)

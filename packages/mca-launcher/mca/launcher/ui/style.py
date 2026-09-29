@@ -16,11 +16,20 @@ logger = logging.getLogger('mca-launcher')
 
 #: Panel and window sizes, in one place rather than sprinkled through the windows as
 #: setFixedSize calls.
-WINDOW_WIDTH = 720
-WINDOW_HEIGHT = 560
-TILE_WIDTH = 132
-TILE_HEIGHT = 172
-ICON_SIZE = 84
+WINDOW_WIDTH = 700
+WINDOW_HEIGHT = 520
+
+#: One DCC per row: tall enough for the icon and the two lines of text beside it.
+ROW_HEIGHT = 78
+ICON_SIZE = 54
+
+#: The version dropdown has to hold an Unreal project's name and a '(not installed)' mark,
+#: and the action button has to hold 'Install' without the text moving when it says 'Launch'.
+VERSION_WIDTH = 210
+ACTION_WIDTH = 96
+
+#: ``path_box.png`` is 636x66, and the project row is drawn on it.
+BAR_HEIGHT = 66
 
 
 def apply(widget):

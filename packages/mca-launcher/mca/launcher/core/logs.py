@@ -18,7 +18,11 @@ from mca.launcher.core import platform_paths
 
 LOGGER_NAME = 'mca-launcher'
 
-FORMAT = '%(asctime)s  %(levelname)-7s  %(name)s  %(filename)s:%(lineno)d  %(message)s'
+#: The process id is in here because more than one launcher can be open, and they all
+#: write to the same day's file - so a doubled line is either two processes or a bug,
+#: and without the pid there is no way to tell which.
+FORMAT = ('%(asctime)s  %(levelname)-7s  pid %(process)d  %(filename)s:%(lineno)d  '
+          '%(message)s')
 DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 

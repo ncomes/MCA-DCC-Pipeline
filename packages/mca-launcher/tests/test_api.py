@@ -41,14 +41,22 @@ class PretendDcc(Dcc):
     label = 'Pretend'
     icon = 'default_icon.png'
     startup_folder = 'maya'
+    installer_folder = 'Pretend'
+    download_url = 'https://example.invalid/pretend'
+
+    #: What this machine is pretending to have.
+    here = ('2025', '2024')
 
     def __init__(self, script, output):
         self.script = script
         self.output = output
 
+    def is_installed(self, version):
+        return str(version) in self.here
+
     def targets(self):
-        return [LaunchTarget(self.name, '2025', 'Pretend 2025'),
-                LaunchTarget(self.name, '2024', 'Pretend 2024')]
+        return [LaunchTarget(self.name, version, 'Pretend {}'.format(version))
+                for version in self.here]
 
     def interpreter(self, version):
         return sys.executable
@@ -158,6 +166,73 @@ def body(suite):
         state = api.dependency_status('pretend', '2025')
         suite.check('dependencies start out not ready',
                     state['ok'] and not state['result']['satisfied'], state['message'])
+
+        # -- installing a version this machine does not have ---------- #
+        # The studio's installer is a .bat, which is the case the old launcher could not
+        # express at all: it ran one hard coded .exe name per DCC, and nothing for Unreal.
+        installers = os.path.join(suite.temp, 'installers')
+        os.makedirs(os.path.join(installers, 'Pretend', '2026'))
+        batch = os.path.join(installers, 'Pretend', '2026', 'deploy.bat')
+        with open(batch, 'w') as handle:
+            handle.write('@echo off\n')
+        api.save_project('Wayward', project_root, framework,
+                         art_paths={'MCA_INSTALLERS_PATH': installers})
+
+        listing = api.dcc_targets()
+        keys = [target['key'] for target in listing['result'][0]['targets']]
+        suite.check('a version the project can install is offered even though it is not here',
+                    keys == ['2026', '2025', '2024'], str(keys))
+        marked = [target for target in listing['result'][0]['targets']
+                  if target['key'] == '2026'][0]
+        suite.check('and it is marked as not installed',
+                    not marked['installed'], str(marked))
+        suite.check('and says the installer it would run',
+                    marked['detail'] == os.path.normpath(batch), marked['detail'])
+        suite.check('while the chosen version is still one that can actually be started',
+                    listing['result'][0]['chosen'] == '2025',
+                    str(listing['result'][0]['chosen']))
+
+        import subprocess
+        import webbrowser
+
+        ran = []
+        opened = []
+        real_popen, real_open = subprocess.Popen, webbrowser.open
+        subprocess.Popen = lambda command, **kwargs: ran.append((command, kwargs)) or None
+        webbrowser.open = lambda url: opened.append(url) or True
+        try:
+            response = api.install_dcc('pretend', '2026')
+            suite.check('installing it runs the studio\'s installer', response['ok'],
+                        response['message'])
+            command = ran[0][0] if ran else []
+            suite.check('through a shell, because a .bat is not something you exec',
+                        command[1:] == ['/c', os.path.normpath(batch)], str(command))
+            suite.check('from the installer\'s own folder, in case it uses relative paths',
+                        ran[0][1].get('cwd') == os.path.dirname(batch), str(ran[0][1]))
+            suite.check('and the message says to press Refresh afterwards',
+                        'Refresh' in response['message'], response['message'])
+
+            ran[:] = []
+            response = api.install_dcc('pretend')
+            suite.check('with no version named, the newest that can be installed is used',
+                        response['ok'] and response['result']['key'] == '2026',
+                        response['message'])
+
+            ran[:] = []
+            response = api.install_dcc('pretend', '2025')
+            suite.check('asking to install one that is already here says so and runs nothing',
+                        response['ok'] and not ran and 'already installed' in
+                        response['message'], response['message'])
+
+            # No installer for this one: the download page, and a reason.
+            response = api.install_dcc('pretend', '2027')
+            suite.check('a version with no installer opens the download page instead',
+                        response['ok'] and opened == [PretendDcc.download_url],
+                        '{} / {}'.format(response['message'], opened))
+            suite.check('and the message says why it did that',
+                        'installer folder' in response['message'], response['message'])
+        finally:
+            subprocess.Popen, webbrowser.open = real_popen, real_open
 
         # -- an install that fails ------------------------------------ #
         def failing_install(dcc, version, framework_path, interpreter, progress=None):
