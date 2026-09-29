@@ -33,9 +33,38 @@ def dlls(folder):
                   glob.glob(os.path.join(folder, 'python*.dll'))) or ['<none>']
 
 
+def newest_dependency_folder(name='mobu-2024'):
+    """
+    The dependency folder to look in when nobody said.
+
+    The newest first-run sandbox if there is one, because that is what has just failed,
+    and otherwise the real folder.
+
+    :param str name: The ``<dcc>-<version>`` folder wanted.
+    :return: The folder, or ''.
+    :rtype: str
+    """
+
+    local = os.environ.get('LOCALAPPDATA', '')
+    if not local:
+        return ''
+    sandboxes = os.path.join(local, 'MCA', 'first-run')
+    if os.path.isdir(sandboxes):
+        stamps = sorted(os.listdir(sandboxes), reverse=True)
+        for stamp in stamps:
+            folder = os.path.join(sandboxes, stamp, 'deps', name)
+            if os.path.isdir(folder):
+                return folder
+    folder = os.path.join(local, 'MCA', 'deps', name)
+    return folder if os.path.isdir(folder) else ''
+
+
 def main():
     target = sys.argv[1] if len(sys.argv) > 1 else ''
     package = sys.argv[2] if len(sys.argv) > 2 else 'psutil'
+    if not target:
+        target = newest_dependency_folder()
+        print('(no folder given, using the newest one found)')
 
     print('interpreter : {}'.format(sys.executable))
     print('version     : {}'.format(sys.version.replace('\n', ' ')))
