@@ -13,6 +13,36 @@ mca-launcher --launch maya:2025 --project Wayward
 mca-launcher --launch maya --json    the same, as data
 ```
 
+## The window
+
+One row per application: icon, name, what is installed, a version dropdown, one button. The
+button's job follows the selection — **Launch** for a version that is here, **Install** for
+one marked `(not installed)`, so a supported version you do not have is visible and
+actionable rather than absent. Unreal's dropdown holds projects, so an installable engine
+gets its own button beside it.
+
+Long jobs run on a worker thread (`dialogs.Job`), so the progress window keeps moving while
+pip is quiet. Tools → Check / Reinstall Dependencies are submenus listing every installed
+version by name; each entry acts on that version.
+
+## Installing a version you do not have
+
+Whatever the studio actually keeps, per DCC and version:
+
+```
+<installers>\Maya\2025\MAYA_Install.exe
+<installers>\Mobu\2024\Mobu_Install.exe
+<installers>\Unreal\5.5\deploy_engine.bat
+```
+
+`MCA_INSTALLERS_PATH` in the project names the root; without it the old
+`<project root>\Tools\DCC Launcher\DCCAppLaunchers` layout is still found. Anything in
+`INSTALLER_SUFFIXES` counts — `.bat .cmd .exe .msi .ps1 .py .lnk .url` — and each kind is run
+the way it needs running (a `.bat` through the shell as an argument, an `.msi` through
+msiexec, a `.ps1` with the policy it needs). **The folder is the configuration:** a version
+folder nobody hard coded is offered anyway; an empty one is not. With no installer for that
+version, the vendor's download page opens and the message says where it looked.
+
 ## How it is put together
 
 ```
@@ -62,8 +92,28 @@ another, so one shared folder cannot be right.
   working software with broken tools, which is the most expensive kind of failure to
   diagnose.
 
+- A package that **installs and then will not load** is retried with a build made for one
+  exact Python, when there is a known one (`ABI3_FALLBACKS`). MotionBuilder ships
+  `python310.dll` and no `python3.dll`, so psutil's stable-ABI wheel installs there and then
+  fails to load; `psutil == 5.9.3` is the last version built for one Python, and it works.
+  Only reached after the modern wheel has actually failed.
+
 `mca-common` owns the requirements list. This package reads it and installs it; it never
 keeps a copy.
+
+## Trying it as a new machine
+
+```
+first_run.bat
+```
+
+Opens the launcher with `MCA_PREFS_ROOT`, `MCA_DEPS_ROOT` and `MCA_LOGS_ROOT` pointed at a
+fresh sandbox under `%LOCALAPPDATA%\MCA\first-run\<stamp>`, so a clean-machine run installs
+for real without reading or touching the preferences and dependency folders this machine
+already has. With no projects at all, the launcher opens the project setup by itself.
+
+`tests\probe_mobu.bat` asks MotionBuilder's own Python why a package that installed will not
+import there, and writes its answer to `%LOCALAPPDATA%\MCA\probe_mobu.txt`.
 
 ## Preferences
 
