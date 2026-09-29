@@ -350,10 +350,22 @@ def create_shortcut(dcc, key=None, project=None, folder='', name=''):
         description='Start {} {} for {} with the MCA pipeline.'
                     .format(dcc_object.label, key, project_name))
 
+    message = ('Put "{}" on your desktop. It starts {} {} for {} without opening the '
+               'launcher.'.format(label, dcc_object.label, key, project_name))
+
+    # A .lnk cannot carry an environment variable, so a shortcut made by a launcher that is
+    # running with redirected folders - first_run.bat, or a test - will read the real ones
+    # when it is double-clicked, and find no such project. Say so rather than leaving a
+    # shortcut that fails later for a reason nobody could guess.
+    sandboxed = [name for name in ('MCA_PREFS_ROOT', 'MCA_DEPS_ROOT') if os.getenv(name)]
+    if sandboxed:
+        message += (' Note: this launcher is running with {} redirected, and a shortcut '
+                    'cannot carry that - double-clicking it uses the real preferences and '
+                    'dependency folders.'.format(' and '.join(sandboxed)))
+
     return ({'path': written, 'dcc': dcc_object.name, 'key': key, 'project': project_name,
-             'target': target},
-            'Put "{}" on your desktop. It starts {} {} for {} without opening the launcher.'
-            .format(label, dcc_object.label, key, project_name))
+             'target': target, 'redirected': sandboxed},
+            message)
 
 
 # ---------------------------------------------------------------------------- #

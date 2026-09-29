@@ -360,6 +360,11 @@ def body(suite):
                         response['ok'] and 'pretend:2025' in written[-1]['arguments'],
                         str(written[-1]['arguments'] if written else response['message']))
 
+            # The suite itself runs with the folders redirected, which is the same state
+            # first_run.bat leaves the launcher in - and a .lnk cannot carry that.
+            suite.check('a shortcut made with redirected folders says it cannot carry them',
+                        'redirected' in response['message'], response['message'])
+
             response = api.create_shortcut('pretend', '2019', folder=suite.temp)
             suite.check('a version that is not installed is refused, not written',
                         not response['ok'], response['message'])
