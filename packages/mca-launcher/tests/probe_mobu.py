@@ -20,7 +20,11 @@ version-specific extensions import perfectly - which is exactly the shape of thi
 # python imports
 import glob
 import os
+import subprocess
 import sys
+
+#: Set on the child, so the re-run below happens once and not forever.
+CHILD_VARIABLE = 'MCA_PROBE_UNDER_MOBUPY'
 
 
 #: Where the report is written as well as printed.
@@ -61,6 +65,65 @@ def dlls(folder):
                   glob.glob(os.path.join(folder, 'python*.dll'))) or ['<none>']
 
 
+def find_mobupy():
+    """
+    MotionBuilder's own interpreter, from the registry first and the usual place after.
+
+    :return: The path, or ''.
+    :rtype: str
+    """
+
+    relative = os.path.join('bin', 'x64', 'mobupy.exe')
+    try:
+        import winreg
+    except ImportError:
+        winreg = None
+
+    if winreg:
+        for version in ('2026', '2025', '2024', '2023', '2022'):
+            key = r'SOFTWARE\Autodesk\MotionBuilder\{}'.format(version)
+            for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                try:
+                    with winreg.OpenKey(root, key) as opened:
+                        folder, _ = winreg.QueryValueEx(opened, 'InstallPath')
+                except OSError:
+                    continue
+                candidate = os.path.join(str(folder), relative)
+                if os.path.isfile(candidate):
+                    return os.path.normpath(candidate)
+
+    for version in ('2026', '2025', '2024', '2023', '2022'):
+        candidate = os.path.join(r'C:\Program Files\Autodesk',
+                                 'MotionBuilder {}'.format(version), relative)
+        if os.path.isfile(candidate):
+            return os.path.normpath(candidate)
+    return ''
+
+
+def rerun_under_mobupy():
+    """
+    Start this same file again with mobupy, and pass its output straight through.
+
+    The whole question is about MotionBuilder's interpreter, so being opened with any other
+    Python answers nothing - and a probe that quietly answers the wrong question is worse
+    than one that will not run. Double-clicking this file now gets the right answer anyway.
+
+    :return: The exit code, or None when there is no MotionBuilder to run it with.
+    :rtype: int or None
+    """
+
+    mobupy = find_mobupy()
+    if not mobupy:
+        return None
+
+    environment = dict(os.environ)
+    environment[CHILD_VARIABLE] = '1'
+    command = [mobupy, os.path.abspath(__file__)] + sys.argv[1:]
+    print('re-running under {}'.format(mobupy))
+    print('')
+    return subprocess.call(command, env=environment)
+
+
 def newest_dependency_folder(name='mobu-2024'):
     """
     The dependency folder to look in when nobody said.
@@ -88,6 +151,18 @@ def newest_dependency_folder(name='mobu-2024'):
 
 
 def main():
+    # Opened with the wrong Python - by a file association, or by double-clicking this file
+    # rather than the batch file beside it. Hand the job to the interpreter the question is
+    # actually about.
+    if 'mobupy' not in os.path.basename(sys.executable).lower():
+        if not os.environ.get(CHILD_VARIABLE):
+            code = rerun_under_mobupy()
+            if code is not None:
+                # The child wrote the report; this process has nothing to add.
+                raise SystemExit(code)
+            say('No MotionBuilder was found on this machine, so this is {} instead - which '
+                'answers nothing about MotionBuilder.'.format(sys.executable))
+
     target = sys.argv[1] if len(sys.argv) > 1 else ''
     package = sys.argv[2] if len(sys.argv) > 2 else 'psutil'
     if not target:
@@ -182,6 +257,10 @@ def write_report():
 
 
 if __name__ == '__main__':
-    code = main()
+    try:
+        code = main()
+    except SystemExit as stop:
+        # The child did the work and wrote the report.
+        sys.exit(stop.code)
     write_report()
     sys.exit(code)
