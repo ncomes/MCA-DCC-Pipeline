@@ -21,7 +21,8 @@ Each piece lands finished rather than copied and marked for later.
 | `pyqt/pygui.py`, `pyqt/qt_utils/windows.py` | ported, 21 checks |
 | `pyqt/` (the window classes, dialogs, helpers) | to do — needs `resources/` first |
 | `modifiers/` | ported, 25 checks |
-| `paths/paths.py`, `resources/` | next |
+| `paths/paths.py`, `utils/dcc_util.py` | ported, 24 checks |
+| `resources/` | next — then back for the pyqt window classes |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
@@ -191,6 +192,31 @@ The singleton had **two implementations with two registries**, and `clear_cls()`
 `teardown()` only emptied one. Everything inheriting `SimpleSingleton` — the resource library
 among them — could not be cleared by anything, ever, so a framework restart kept the old
 project's paths. One registry now, and `shutdown()` empties it.
+
+## The project's folders
+
+```python
+from mca.common.paths import paths
+
+paths.get_characters_path()      # '' when the project has not said, never a raise
+```
+
+Thirty-odd functions, each some arrangement of
+`os.path.normpath(os.path.join(os.getenv(X), 'Folder'))`. **Every one raised `TypeError`
+when its variable was not set** — `os.getenv` answers None and `normpath(None)` raises — so
+on a half-set-up machine, or in Unreal, which is handed fewer of these than Maya is, asking
+for a folder raised out of a function documented to return one. They answer `''` now.
+
+Two of them also read the import-time snapshot of the project root, in a module whose own
+comment two functions above explained why that was wrong.
+
+## Which application is this
+
+`utils/dcc_util.application()` answers a `Dccs` value — `'maya'`, `'mobu'`, `'unreal'` — the
+same spelling the boot config, the start-up scripts and the constants use. It used to answer
+`'Maya'`, `'Mobu'` and `'Unreal'`, matching none of them, and a path built from it
+(`Tools/Common/Tools/Maya`) worked only because Windows ignores case. `display_name()` is
+there for when a person will read it.
 
 ## Tests
 
