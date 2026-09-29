@@ -246,11 +246,10 @@ class LauncherWindow(QMainWindow):
                 'Setting {} {} up for the first time. This installs the Python packages the '
                 'pipeline needs, with {}\'s own interpreter, and only happens once per '
                 'version.'.format(dcc, key, dcc), parent=self)
-            window.show()
-            try:
-                response = api.launch(dcc, key, project=project, progress=window.say)
-            finally:
-                window.finish()
+            # On a worker thread: pip goes quiet for a minute at a time, and a window that
+            # only redraws when output arrives is indistinguishable from a hung one.
+            response = window.run(
+                lambda progress: api.launch(dcc, key, project=project, progress=progress))
 
         if not response['ok']:
             dialogs.complain('{} was not started'.format(dcc), response['message'], self)
@@ -414,13 +413,10 @@ class LauncherWindow(QMainWindow):
         window = dialogs.ProgressWindow('Installing Dependencies',
                                         'Reinstalling packages for {} {}.'.format(dcc, key),
                                         parent=self)
-        window.show()
-        try:
-            response = api.ensure_dependencies(
-                dcc, key, project=self.project_bar.current_project() or None,
-                force=True, progress=window.say)
-        finally:
-            window.finish()
+        project = self.project_bar.current_project() or None
+        response = window.run(
+            lambda progress: api.ensure_dependencies(dcc, key, project=project, force=True,
+                                                     progress=progress))
         dialogs.show_response(response, self, title='Dependencies')
         self._say(response['message'], ok=response['ok'])
 

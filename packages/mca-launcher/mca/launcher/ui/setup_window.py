@@ -299,20 +299,30 @@ class SetupWindow(QMainWindow):
             'Installing the pipeline\'s Python packages for {} version(s). Each one is '
             'installed with that version\'s own interpreter, so this is a few minutes '
             'each.'.format(len(jobs)), parent=self)
-        window.show()
 
-        failures = []
-        try:
+        def install_everything(progress):
+            """
+            Every job, one after another, on the worker thread.
+
+            :param callable progress: Where to report, line by line.
+            :return: What failed, as sentences.
+            :rtype: list(str)
+            """
+
+            failed_jobs = []
             for dcc, key, label in jobs:
-                window.say('')
-                window.say('=== {} ==='.format(label))
+                progress('')
+                progress('=== {} ==='.format(label))
                 response = api.ensure_dependencies(dcc, key, project=project_name,
-                                                  progress=window.say)
-                window.say(response['message'])
+                                                  progress=progress)
+                progress(response['message'])
                 if not response['ok']:
-                    failures.append('{}: {}'.format(label, response['message']))
-        finally:
-            window.finish()
+                    failed_jobs.append('{}: {}'.format(label, response['message']))
+            return failed_jobs
+
+        # The whole run goes on one worker thread, so the window keeps moving through all of
+        # it rather than only when pip happens to print.
+        failures = window.run(install_everything) or []
 
         if failures:
             dialogs.complain('Dependencies',

@@ -14,13 +14,14 @@ Two things the old versions got wrong and these do not:
 import logging
 
 # PySide6 imports
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QThread, Signal
 from PySide6.QtGui import QMovie
-from PySide6.QtWidgets import QApplication, QDialog, QLabel, QMessageBox, QPlainTextEdit
+from PySide6.QtWidgets import QDialog, QLabel, QMessageBox, QPlainTextEdit
 from PySide6.QtWidgets import QProgressBar, QVBoxLayout
 
 # mca imports
 from mca.launcher.core import resources
+from mca.launcher.core.contract import failed
 
 
 logger = logging.getLogger('mca-launcher')
@@ -110,6 +111,43 @@ def _box(title, text, parent, detail, icon):
 LOGO_HEIGHT = 96
 
 
+class Job(QThread):
+    """
+    One long call, run off the main thread so the window it reports to stays alive.
+
+    The work itself - pip, an interpreter starting, a DCC launching - is in ``core`` and
+    ``api``, which know nothing about Qt. That is what makes this safe: the thread touches no
+    widget. It emits lines, and Qt delivers them to the window on the main thread, because a
+    signal across threads is queued.
+
+    :signal line: a line of progress.
+    :signal answered: the return value, whatever it is.
+    """
+
+    line = Signal(str)
+    answered = Signal(object)
+
+    def __init__(self, function, parent=None):
+        """
+        :param callable function: Called with one argument, a progress callback.
+        """
+
+        super().__init__(parent)
+        self.function = function
+
+    def run(self):
+        """Run it, and answer whatever comes back - including a failure."""
+
+        try:
+            answer = self.function(self.line.emit)
+        except Exception as error:
+            # A raise here would end the thread with nobody listening and the window would
+            # sit there forever. It becomes a failed response like any other.
+            logger.exception('the background job raised')
+            answer = failed(str(error) or type(error).__name__)
+        self.answered.emit(answer)
+
+
 class ProgressWindow(QDialog):
     """
     A modal window for a job measured in minutes, with its output on show.
@@ -121,6 +159,11 @@ class ProgressWindow(QDialog):
     It has no cancel button on purpose: stopping pip halfway leaves a folder that is neither
     the old set of packages nor the new one, which is the state this whole subsystem exists
     to avoid.
+
+    :meth:`run` is how it should be used. The first version pumped events from :meth:`say`,
+    so the window only came back to life when pip printed something - and pip is silent for
+    a minute at a time while it downloads a wheel or while the import check runs. The logo
+    froze, the bar stopped, and a working install looked exactly like a hang.
     """
 
     def __init__(self, title, text, parent=None):
@@ -162,21 +205,53 @@ class ProgressWindow(QDialog):
         self.output.setMaximumBlockCount(4000)
         layout.addWidget(self.output)
 
+        self.job = None
+        self.answer = None
+
+    def run(self, function):
+        """
+        Run a long call on a worker thread, with this window up and moving, and answer it.
+
+        :param callable function: Called with one argument, a progress callback it may call
+            from the worker thread as often as it likes.
+        :return: Whatever the function returned - or a failed response when it raised.
+        """
+
+        self.answer = None
+        self.job = Job(function, parent=self)
+        self.job.line.connect(self.say)
+        self.job.answered.connect(self._answered)
+
+        self.show()
+        self.job.start()
+        # A modal loop, so the movie animates and the bar sweeps while the work happens. The
+        # answered signal is queued, so it can only arrive inside this loop - it cannot close
+        # the window before the loop starts.
+        self.exec()
+        self.job.wait()
+        return self.answer
+
+    def _answered(self, answer):
+        """
+        :param answer: What the job returned.
+        """
+
+        self.answer = answer
+        self.finish()
+
     def say(self, line):
         """
-        Add a line of progress, and keep the window responsive.
+        Add a line of progress.
 
-        Called from the install code as pip produces output. Pumping events here rather than
-        running the install on a thread keeps the whole subsystem single-threaded, which is
-        worth more than the milliseconds a thread would save: there is no shared state to
-        get wrong, and a traceback reads top to bottom.
+        Always called on the main thread: the worker emits, Qt queues, this runs here. No
+        events are pumped - the event loop is running on its own now, which is the whole
+        point of the thread.
 
         :param str line: The line.
         """
 
         self.output.appendPlainText(str(line))
         self.output.ensureCursorVisible()
-        QApplication.processEvents()
 
     def finish(self):
         """Close the window."""
@@ -184,3 +259,18 @@ class ProgressWindow(QDialog):
         if hasattr(self, 'movie'):
             self.movie.stop()
         self.accept()
+
+    def closeEvent(self, event):
+        """
+        Refuse to go while the job is still running.
+
+        There is no cancel, and the window closing out from under a running install would
+        leave its output going nowhere.
+
+        :param event: The close event.
+        """
+
+        if self.job is not None and self.job.isRunning() and self.answer is None:
+            event.ignore()
+            return
+        super().closeEvent(event)

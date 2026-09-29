@@ -58,8 +58,17 @@ def body(suite):
     launcher_window.dialogs = dialogs
     setup_window.dialogs = dialogs
 
+    RealProgress = dialogs.ProgressWindow
+
     class QuietProgress(object):
-        """Stands in for the progress window, and remembers what it was told."""
+        """
+        Stands in for the progress window, and remembers what it was told.
+
+        ``run`` calls the job straight through instead of putting it on a thread: what the
+        suite is checking here is that the windows hand their work to the progress window at
+        all, and that its output ends up where it should. That the real one runs it off the
+        main thread is checked separately, on the real class.
+        """
 
         lines = []
 
@@ -69,6 +78,9 @@ def body(suite):
         def show(self):
             pass
 
+        def run(self, function):
+            return function(self.say)
+
         def say(self, line):
             QuietProgress.lines.append(line)
 
@@ -76,6 +88,47 @@ def body(suite):
             pass
 
     dialogs.ProgressWindow = QuietProgress
+
+    # ---------------------------------------------------------------- #
+    # The real progress window, which has to keep moving while it works
+    # ---------------------------------------------------------------- #
+    # The first version pumped events from say(), so the window only redrew when pip printed
+    # - and pip goes quiet for a minute at a time. The logo froze and a working install
+    # looked like a hang.
+    import threading
+
+    watched = {}
+
+    def slow_job(progress):
+        watched['thread'] = threading.current_thread().name
+        progress('collecting numpy')
+        progress('installing')
+        return {'ok': True, 'result': {}, 'message': 'installed.'}
+
+    window = RealProgress('Installing Dependencies', 'A job that takes a while.')
+    answer = window.run(slow_job)
+    suite.check('the progress window runs its job off the main thread',
+                watched.get('thread') and
+                watched['thread'] != threading.current_thread().name,
+                str(watched))
+    suite.check('and hands back whatever the job answered',
+                answer == {'ok': True, 'result': {}, 'message': 'installed.'}, str(answer))
+    suite.check('and the lines it reported arrived in the window',
+                'collecting numpy' in window.output.toPlainText(),
+                window.output.toPlainText())
+    suite.check('and the window closed itself when the job was done',
+                not window.isVisible())
+
+    def angry_job(progress):
+        progress('about to go wrong')
+        raise ValueError('pip fell over')
+
+    window = RealProgress('Installing Dependencies', 'A job that raises.')
+    answer = window.run(angry_job)
+    suite.check('a job that raises becomes a failed response, not a window that never closes',
+                isinstance(answer, dict) and not answer['ok'] and
+                'pip fell over' in answer['message'], str(answer))
+    suite.check('and that window closed too', not window.isVisible())
 
     # ---------------------------------------------------------------- #
     # A framework to point at
