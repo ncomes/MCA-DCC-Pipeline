@@ -38,10 +38,29 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 # third party imports
-import mcp.server.stdio
-from mcp.server.lowlevel import NotificationOptions, Server
-from mcp.server.models import InitializationOptions
-from mcp.types import TextContent, Tool
+#
+# An MCP client starts this with whatever interpreter its config names, and a missing `mcp`
+# there produces a bare ModuleNotFoundError repeated once per reconnection attempt - a log
+# full of tracebacks that names the symptom and not the fix. Say which interpreter is short
+# of what, and how to fix it, on stderr, which is where a client shows a server's output.
+try:
+    import mcp.server.stdio
+    from mcp.server.lowlevel import NotificationOptions, Server
+    from mcp.server.models import InitializationOptions
+    from mcp.types import TextContent, Tool
+except ImportError as _error:
+    sys.stderr.write(
+        '\n'
+        'mca-mcp cannot start: the "mcp" package is not installed for this interpreter.\n'
+        '  interpreter : {}\n'
+        '  missing     : {}\n'
+        '  fix         : "{}" -m pip install mcp\n'
+        '\n'
+        'This server also needs PyYAML for maya_launch, which reads the launcher\'s\n'
+        'preferences. One interpreter should have both.\n'
+        '\n'.format(sys.executable, _error, sys.executable))
+    sys.stderr.flush()
+    raise SystemExit(1)
 
 # mca imports
 from mca import mcp as mca_mcp
