@@ -301,6 +301,17 @@ def body(suite):
     else:
         suite.check('with no sibling mca-mcp, nothing about it is added',
                     'MCA_MCP_PATH' not in values, str(values.get('MCA_MCP_PATH')))
+    # A DCC started from a first-run sandbox has to stay in the sandbox: mca-common reads
+    # these same names for its preferences and its logs.
+    suite.check('the folders the launcher was told to use are handed to the DCC on purpose, '
+                'not left to be inherited',
+                values.get('MCA_PREFS_ROOT') == os.environ['MCA_PREFS_ROOT'] and
+                values.get('MCA_LOGS_ROOT') == os.environ['MCA_LOGS_ROOT'],
+                str({name: values.get(name) for name in environment.ROOT_VARIABLES}))
+    suite.check('and one that is not set is not invented',
+                'MCA_LOGGING_LEVEL' in values or not os.getenv('MCA_LOGGING_LEVEL'),
+                str(values.get('MCA_LOGGING_LEVEL')))
+
     suite.check('the launcher\'s own Qt variables are not passed on to the DCC',
                 'QT_PLUGIN_PATH' not in values, str(values.get('QT_PLUGIN_PATH')))
     suite.check('MCA_COMMON_PATH points at mca-common itself',

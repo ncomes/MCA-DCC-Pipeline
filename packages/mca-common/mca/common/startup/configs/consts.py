@@ -26,6 +26,11 @@ MCA_COMMON_ROOT = 'MCA_COMMON_ROOT'
 MCA_COMMON_CONFIG = 'MCA_COMMON_CONFIG'
 MCA_COMMON_TOOLS = 'MCA_COMMON_TOOLS'
 
+#: A folder of DCC installers, when the studio keeps one. The launcher writes it into a
+#: project's preferences, so the framework should know the name even though nothing here
+#: installs anything.
+MCA_INSTALLERS_PATH = 'MCA_INSTALLERS_PATH'
+
 #: Where the Python packages for this DCC version were installed. The launcher fills the
 #: folder and names it here; nothing inside a DCC installs anything.
 MCA_COMMON_DEPEND = 'MCA_COMMON_DEPEND'
@@ -84,6 +89,14 @@ MCA_LOCAL_PREFS = 'mca_preferences'
 #: One per project, inside its own folder. The launcher writes this file; the framework
 #: reads it.
 MCA_LOCAL_PREFS_FILE = 'mca_project.prefs'
+
+#: Beside the project folders, holding which project was open last. The launcher writes it
+#: when the artist changes project; anything that has to work out "the current project"
+#: without being told - the editor, a standalone script - reads it.
+MCA_LAUNCHER_PREFS_FILE = 'mca_launcher.pref'
+
+#: The key inside that file.
+CURRENT_PROJECT_KEY = 'project_name'
 
 #: mca-common, relative to the packages folder.
 MCA_DEFAULT_COMMON_PATH = os.path.join('mca-common', 'mca', 'common')

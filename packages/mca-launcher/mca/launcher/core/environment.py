@@ -89,6 +89,11 @@ def mcp_package_folder():
     return ''
 
 
+#: Overrides that move where preferences, dependencies and logs live. The launcher honours
+#: them and so does mca-common, so a DCC has to be told about them too.
+ROOT_VARIABLES = ('MCA_PREFS_ROOT', 'MCA_DEPS_ROOT', 'MCA_LOGS_ROOT', 'MCA_LOGGING_LEVEL')
+
+
 def build(project_prefs, dcc_name, key, base=None):
     """
     The environment for one launch.
@@ -119,6 +124,17 @@ def build(project_prefs, dcc_name, key, base=None):
     environment['MCA_FRAMEWORK_PATH'] = framework_path
     environment['MCA_PACKAGES_PATH'] = framework_path
     environment['MCA_COMMON_PATH'] = common_path(framework_path)
+
+    # Where preferences and logs live, handed over deliberately. The framework inside the DCC
+    # reads these same three names, so without them a DCC started from a first-run sandbox
+    # would write its logs and read its project preferences from the real folders - the one
+    # thing the sandbox exists to prevent. They did reach the DCC before this, but only
+    # because the whole environment is inherited, which is an accident rather than a
+    # promise: anything that later built a clean environment would have dropped them.
+    for name in ROOT_VARIABLES:
+        value = os.getenv(name)
+        if value:
+            environment[name] = value
 
     # The dependency folder for this exact DCC version, which is also the folder the
     # launcher just made sure was filled.

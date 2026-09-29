@@ -16,6 +16,7 @@ Each piece lands finished rather than copied and marked for later.
 | `startup/configs/package_config.py` | ported, 19 checks — replaces the broken `textio/packages.py` |
 | `startup/dccs/` | ported, 21 checks — one bootstrap, three thin scripts |
 | `startup/dependencies/requirements.txt` | ported — the list the launcher installs |
+| `startup/attach.py` | new, 16 checks — how anything outside a DCC finds a project |
 | `startup/configs/common_env.py` | **dropped** — see below |
 | `pyqt/` | to do |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
@@ -132,6 +133,29 @@ The three used to be the same twenty lines copied about, and the copies had drif
 MotionBuilder's called `startup.init(dcc='mobu')` — no such function, and no project name —
 so the framework has never once come up in MotionBuilder. Maya's pip-installed pymel into
 Maya's own installation during start-up. Unreal's defaulted the project to `'Wayward'`.
+
+## Attaching from outside a DCC
+
+A DCC the launcher started needs nothing: the launcher put that project's start-up folder on
+its path, so the script that runs is already the right project's and finds the framework from
+its own location. Anything else — the editor, a farm job, a standalone script, an MCP server —
+has to answer "which project?" first:
+
+```python
+from mca.common.startup import attach
+
+attach.attach()                  # the launcher's current project
+attach.attach('Wayward')         # a named one
+attach.attach(dcc='maya', start=True)
+```
+
+In order: what the caller says, then `MCA_PROJECT_NAME`, then the launcher's own
+`mca_launcher.pref`. No guessing and no hardcoded paths — a machine with nothing set up gets
+a sentence saying so.
+
+It also reports when a *different* `mca` is already imported — a pip-installed mca-common in
+an editor's venv, say — because a framework quietly running from the wrong copy is a day of
+confusion. `replace=True` drops those modules so the project's copy wins.
 
 ## Tests
 
