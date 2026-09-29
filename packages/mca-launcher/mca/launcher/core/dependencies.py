@@ -77,6 +77,26 @@ IMPORT_NAMES = {
     'google-genai': 'google.genai',
 }
 
+#: When a package's Windows wheel is a stable-ABI ("abi3") build, the newest version of it
+#: that still ships a wheel built for one exact Python.
+#:
+#: An abi3 extension is one wheel for every Python 3.x, and it links against ``python3.dll``
+#: rather than ``python310.dll``. MotionBuilder 2024 ships only ``python310.dll`` - measured:
+#: ``bin/x64`` holds that and nothing else - so every abi3 extension there fails to load with
+#: "DLL load failed ... The specified module could not be found", while pure Python and
+#: version-specific extensions import perfectly. Maya has no such trouble with the same
+#: package and the same Python version, which is why this is not a rule about Python 3.10.
+#:
+#: psutil's wheels went abi3 at 5.9.4; 5.9.3 is the last with a ``cp310-cp310-win_amd64``
+#: wheel. It is only reached when the abi3 build has actually failed to import, so a machine
+#: where the modern one works never sees it.
+ABI3_FALLBACKS = {
+    'psutil': 'psutil == 5.9.3',
+}
+
+#: What a Windows extension module says when the DLL it links against is not there.
+ABI3_SYMPTOM = 'dll load failed'
+
 #: The framework does not start without these. Everything else that fails to install for a
 #: given interpreter is reported and skipped - which is how Maya 2022's Python 3.7 can keep
 #: working after the AI packages, which need 3.8 or newer, refuse to install there.
@@ -468,6 +488,84 @@ def verify(interpreter, target, imports):
     return {'ok': not missing, 'imported': imported, 'missing': missing}
 
 
+def remove_distribution(target, name):
+    """
+    Take one package out of a dependency folder, so a different version can replace it.
+
+    ``pip install --target`` never uninstalls: it writes over what is there and leaves the
+    rest, so a downgrade would otherwise keep the old dist-info and any file the new version
+    does not have.
+
+    :param str target: The dependency folder.
+    :param str name: The distribution name.
+    """
+
+    for entry in sorted(os.listdir(target)) if os.path.isdir(target) else []:
+        lowered = entry.lower()
+        if lowered == name or lowered.startswith(name + '-') or lowered.startswith(name + '.'):
+            path = os.path.join(target, entry)
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+            except OSError as error:
+                logger.warning('Could not remove %s: %s', path, error)
+
+
+def recover_stable_abi(interpreter, target, wanted, missing, say):
+    """
+    Try an older build of anything that installed but could not load its extension.
+
+    Called only with what the import check actually rejected. A package whose reason does not
+    look like a DLL that will not load is left alone: this is a fix for one specific,
+    measured failure, not a general "try an older version and hope".
+
+    :param str interpreter: The DCC's Python executable.
+    :param str target: The dependency folder.
+    :param list(str) wanted: The requirement lines that were installed.
+    :param dict missing: ``{import name: reason}`` from :func:`verify`.
+    :param callable say: Where to report.
+    :return: ``{import name: the requirement that was installed instead}`` for what was
+        recovered.
+    :rtype: dict
+    """
+
+    by_import = {import_name(line): requirement_name(line) for line in wanted}
+    attempts = {}
+    for name, reason in sorted(missing.items()):
+        if ABI3_SYMPTOM not in str(reason).lower():
+            continue
+        distribution = by_import.get(name, name)
+        pin = ABI3_FALLBACKS.get(distribution)
+        if pin:
+            attempts[name] = pin
+
+    if not attempts:
+        return {}
+
+    recovered = {}
+    for name, pin in sorted(attempts.items()):
+        say('{} installed, but its extension will not load in this interpreter: it has no '
+            'python3.dll, which a stable-ABI wheel links against. Trying {}, the last build '
+            'with a wheel for this exact Python.'.format(name, pin))
+        remove_distribution(target, requirement_name(pin))
+        code, _ = _run(_pip_command(interpreter, ['install', '--no-cache-dir',
+                                                  '--no-warn-script-location',
+                                                  '--target', target, pin]), progress=None)
+        if code != 0:
+            say('  {} would not install either.'.format(pin))
+            continue
+        proof = verify(interpreter, target, [name])
+        if proof['ok']:
+            say('  {} imports now.'.format(name))
+            recovered[name] = pin
+        else:
+            say('  {} still does not import: {}'
+                .format(name, proof['missing'].get(name, 'no reason given')))
+    return recovered
+
+
 def install(dcc, version, framework_path, interpreter, progress=None):
     """
     Install this DCC version's dependencies, from scratch.
@@ -546,6 +644,17 @@ def install(dcc, version, framework_path, interpreter, progress=None):
                      - {import_name(one['requirement']) for one in skipped})
     checked = verify(interpreter, target, imports)
 
+    # Something installed and then would not load. For the one cause that has actually been
+    # measured - a stable-ABI extension in an interpreter with no python3.dll - there is a
+    # build that works, and using it beats refusing to start the DCC at all.
+    pinned = recover_stable_abi(interpreter, target, wanted, checked['missing'], say)
+    for name in pinned:
+        checked['missing'].pop(name, None)
+        if name not in checked['imported']:
+            checked['imported'].append(name)
+    checked['imported'].sort()
+    checked['ok'] = not checked['missing']
+
     fatal = sorted(name for name in checked['missing'] if name in CORE_IMPORTS)
     ok = not fatal
 
@@ -562,6 +671,7 @@ def install(dcc, version, framework_path, interpreter, progress=None):
         'imported': checked['imported'],
         'missing': checked['missing'],
         'skipped': skipped,
+        'pinned': pinned,
         'qt_excluded': [requirement_name(one) for one in dropped],
         'launcher': _launcher_version(),
     }
@@ -574,6 +684,10 @@ def install(dcc, version, framework_path, interpreter, progress=None):
             message += (' {} package(s) had no version for Python {} and were skipped: {}.'
                         .format(len(skipped), stamp['python'],
                                 ', '.join(one['requirement'] for one in skipped)))
+        if pinned:
+            message += (' {} had to fall back to an older build this interpreter can load: '
+                        '{}.'.format(', '.join(sorted(pinned)),
+                                     ', '.join(sorted(pinned.values()))))
     else:
         message = ('{} {} is not ready. These are needed and could not be imported: {}. '
                    'The log has pip\'s output; the folder is {}.'

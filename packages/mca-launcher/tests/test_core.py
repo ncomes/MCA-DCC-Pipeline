@@ -319,6 +319,73 @@ def body(suite):
                                   base={})['UE_PROJECT_PATH'].endswith('g.uproject'))
 
     # ---------------------------------------------------------------- #
+    # A package that installs and then will not load
+    # ---------------------------------------------------------------- #
+    # Measured on MotionBuilder 2024: it ships python310.dll and no python3.dll, so psutil's
+    # stable-ABI wheel installs and then fails with "DLL load failed ... The specified module
+    # could not be found". Maya, same Python version, is fine - so this is about the
+    # interpreter, not about 3.10.
+    abi_target = os.path.join(suite.temp, 'abi-deps')
+    os.makedirs(os.path.join(abi_target, 'psutil'))
+    os.makedirs(os.path.join(abi_target, 'psutil-7.2.2.dist-info'))
+    os.makedirs(os.path.join(abi_target, 'numpy'))
+    with open(os.path.join(abi_target, 'psutil', '_psutil_windows.pyd'), 'w') as opened:
+        opened.write('')
+
+    dependencies.remove_distribution(abi_target, 'psutil')
+    suite.check('taking a package out of a dependency folder removes its dist-info too',
+                sorted(os.listdir(abi_target)) == ['numpy'], str(os.listdir(abi_target)))
+
+    os.makedirs(os.path.join(abi_target, 'psutil'))
+    said = []
+    real_run, real_verify = dependencies._run, dependencies.verify
+    runs = []
+
+    def fake_run(command, progress=None, timeout=None, cwd=None):
+        runs.append(command)
+        return 0, 'installed'
+
+    def fake_verify(interpreter, target, imports):
+        return {'ok': True, 'imported': list(imports), 'missing': {}}
+
+    wanted = ['psutil >= 5.9.4', 'numpy']
+    try:
+        dependencies._run = fake_run
+        dependencies.verify = fake_verify
+
+        # Not a DLL failure: left alone, because this is a fix for one measured cause and
+        # not a general "try an older version and hope".
+        recovered = dependencies.recover_stable_abi(
+            sys.executable, abi_target, wanted,
+            {'psutil': 'ModuleNotFoundError no module named psutil'}, said.append)
+        suite.check('a package that is simply missing is not downgraded',
+                    recovered == {} and not runs, str(recovered))
+
+        recovered = dependencies.recover_stable_abi(
+            sys.executable, abi_target, wanted,
+            {'psutil': 'ImportError DLL load failed while importing _psutil_windows: The '
+                       'specified module could not be found.'}, said.append)
+        suite.check('one that installed but cannot load its extension is retried pinned',
+                    recovered == {'psutil': 'psutil == 5.9.3'}, str(recovered))
+        suite.check('and the pin is what was handed to pip',
+                    runs and 'psutil == 5.9.3' in runs[-1], str(runs[-1] if runs else []))
+        suite.check('and the old copy was taken out first, because --target never uninstalls',
+                    not os.path.isdir(os.path.join(abi_target, 'psutil')),
+                    str(os.listdir(abi_target)))
+        suite.check('and it says why, in words that name the cause',
+                    any('python3.dll' in line for line in said), str(said))
+
+        # A package nobody has a fallback for is reported, not guessed at.
+        recovered = dependencies.recover_stable_abi(
+            sys.executable, abi_target, ['somethingelse'],
+            {'somethingelse': 'ImportError DLL load failed while importing _core'},
+            said.append)
+        suite.check('a package with no known good older build is left to be reported',
+                    recovered == {}, str(recovered))
+    finally:
+        dependencies._run, dependencies.verify = real_run, real_verify
+
+    # ---------------------------------------------------------------- #
     # Installers: whatever the studio actually keeps, for every DCC
     # ---------------------------------------------------------------- #
     class Pretend(dcc_base.Dcc):
