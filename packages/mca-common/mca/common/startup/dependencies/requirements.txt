@@ -1,0 +1,31 @@
+# What the framework needs inside a DCC.
+#
+# mca-common owns this list and nothing else keeps a copy. The launcher reads it and
+# installs it per DCC version, with that version's own interpreter, into a folder of its
+# own - never into the DCC's installation.
+#
+# Qt is not here to be installed: every DCC ships its own, and a second Qt on sys.path is an
+# abort with no traceback. PySide6 and shiboken6 are listed because some tools check for
+# them, and the launcher drops them before installing anything.
+#
+# A package with no build for a given interpreter is skipped by name rather than taking the
+# list down with it - which is how Maya 2022's Python 3.7 keeps working without the two AI
+# packages.
+
+numpy
+PyYAML == 6.0
+PySide6
+shiboken6
+pluggy
+anytree >= 2.8.0
+psutil >= 5.9.4
+yamlordereddictloader
+pytz >= 2023.2
+beautifulsoup4 >= 4.12.0
+requests >= 2.31.0
+anthropic >= 0.18.0
+openai >= 1.12.0
+
+# Voice input.
+vosk >= 0.3.45
+sounddevice >= 0.5.0

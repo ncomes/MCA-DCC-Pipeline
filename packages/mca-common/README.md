@@ -14,7 +14,8 @@ Each piece lands finished rather than copied and marked for later.
 | `paths/` | ported, 35 checks |
 | `startup/` | ported, 27 checks — `startup.py`, `configs/config.py`, `consts.py` |
 | `startup/configs/package_config.py` | ported, 19 checks — replaces the broken `textio/packages.py` |
-| `startup/dccs/` (userSetup and friends) | to do |
+| `startup/dccs/` | ported, 21 checks — one bootstrap, three thin scripts |
+| `startup/dependencies/requirements.txt` | ported — the list the launcher installs |
 | `startup/configs/common_env.py` | **dropped** — see below |
 | `pyqt/` | to do |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
@@ -114,6 +115,23 @@ rather than joined with the platform separator.
 
 The `urls` block is blank on purpose: the ones it replaces pointed at a previous employer's
 internal wiki.
+
+## What a DCC runs on start-up
+
+```
+startup/dccs/maya/Scripts/userSetup.py
+startup/dccs/mobu/Scripts/startup.py
+startup/dccs/unreal/Scripts/init_unreal.py
+```
+
+Each works out where the framework is **from its own location** — no environment needed — and
+hands over to `startup/dccs/bootstrap.py`. They never raise: in Maya's `userSetup.py` an
+exception stops everything after it, so a broken pipeline costs the tools, not the DCC.
+
+The three used to be the same twenty lines copied about, and the copies had drifted.
+MotionBuilder's called `startup.init(dcc='mobu')` — no such function, and no project name —
+so the framework has never once come up in MotionBuilder. Maya's pip-installed pymel into
+Maya's own installation during start-up. Unreal's defaulted the project to `'Wayward'`.
 
 ## Tests
 
