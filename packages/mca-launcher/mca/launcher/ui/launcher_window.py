@@ -127,13 +127,16 @@ class LauncherWindow(QMainWindow):
 
         tools.addSeparator()
 
-        action = tools.addAction('Check Dependencies')
-        action.setStatusTip('Report whether the selected DCC has what the framework needs')
-        action.triggered.connect(self._check_dependencies)
-
-        action = tools.addAction('Reinstall Dependencies')
-        action.setStatusTip('Wipe and reinstall the selected DCC version\'s packages')
-        action.triggered.connect(self._reinstall_dependencies)
+        # A submenu each, one entry per installed version, named. The first version of this
+        # menu acted on "whichever row has something selected", which is a thing the window
+        # does not have: it walked the rows and took the first one that could answer, so
+        # every Reinstall was Maya's no matter what the artist had been looking at - and the
+        # dialog said Maya, which is the only reason anybody found out.
+        self.check_menu = tools.addMenu('Check Dependencies')
+        self.check_menu.setStatusTip('Report whether a DCC version has what the framework '
+                                     'needs')
+        self.reinstall_menu = tools.addMenu('Reinstall Dependencies')
+        self.reinstall_menu.setStatusTip('Wipe and reinstall one DCC version\'s packages')
 
         tools.addSeparator()
 
@@ -194,6 +197,8 @@ class LauncherWindow(QMainWindow):
             self._say(listing['message'], ok=False)
             return
 
+        self._rebuild_dependency_menus(listing['result'])
+
         for entry in listing['result']:
             row = self.rows.get(entry['dcc'])
             if not row:
@@ -205,6 +210,35 @@ class LauncherWindow(QMainWindow):
             else:
                 row.set_targets(entry['targets'], entry['chosen'])
                 row.set_detail(self._detail_for(entry))
+
+    def _rebuild_dependency_menus(self, listing):
+        """
+        Fill the two dependency submenus with what is actually on this machine.
+
+        :param list(dict) listing: From ``api.dcc_targets``.
+        """
+
+        self.check_menu.clear()
+        self.reinstall_menu.clear()
+
+        found = 0
+        for entry in listing:
+            for target in entry['targets']:
+                if not target['installed']:
+                    continue
+                found += 1
+                dcc, key, label = entry['dcc'], target['key'], target['label']
+                action = self.check_menu.addAction(label)
+                action.triggered.connect(
+                    lambda checked=False, d=dcc, k=key: self._check_dependencies(d, k))
+                action = self.reinstall_menu.addAction(label)
+                action.triggered.connect(
+                    lambda checked=False, d=dcc, k=key: self._reinstall_dependencies(d, k))
+
+        if not found:
+            for menu in (self.check_menu, self.reinstall_menu):
+                action = menu.addAction('nothing is installed')
+                action.setEnabled(False)
 
     @staticmethod
     def _detail_for(entry):
@@ -386,8 +420,14 @@ class LauncherWindow(QMainWindow):
                 return name, row.current_key()
         return '', ''
 
-    def _check_dependencies(self):
-        dcc, key = self._selected()
+    def _check_dependencies(self, dcc='', key=''):
+        """
+        :param str dcc: Which DCC. Empty falls back to whatever a row has selected.
+        :param str key: Which version.
+        """
+
+        if not dcc:
+            dcc, key = self._selected()
         if not dcc:
             self._say('Nothing installed is selected to check.', ok=False)
             return
@@ -400,8 +440,14 @@ class LauncherWindow(QMainWindow):
                 result.get('target'), result.get('requirements'), result.get('fingerprint'))
         dialogs.tell('Dependencies', response['message'], self, detail)
 
-    def _reinstall_dependencies(self):
-        dcc, key = self._selected()
+    def _reinstall_dependencies(self, dcc='', key=''):
+        """
+        :param str dcc: Which DCC. Empty falls back to whatever a row has selected.
+        :param str key: Which version.
+        """
+
+        if not dcc:
+            dcc, key = self._selected()
         if not dcc:
             self._say('Nothing installed is selected to reinstall.', ok=False)
             return

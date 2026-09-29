@@ -357,6 +357,27 @@ def body(suite):
         main._reinstall_dependencies()
         suite.check('and answering yes does', len(calls) == 1, str(len(calls)))
 
+        # -- the menu names what it will act on ------------------------ #
+        # It used to act on "whichever row has something selected", which the window does not
+        # have: it walked the rows and took the first that could answer, so every reinstall
+        # was the first DCC's whatever the artist had been looking at.
+        labels = [action.text() for action in main.reinstall_menu.actions()]
+        suite.check('the reinstall menu lists every installed version by name',
+                    labels == ['Pretend 2025', 'Pretend 2024'], str(labels))
+        suite.check('and so does the check menu',
+                    [action.text() for action in main.check_menu.actions()] == labels,
+                    str([action.text() for action in main.check_menu.actions()]))
+
+        shown['ask'] = []
+        calls[:] = []
+        for action in main.reinstall_menu.actions():
+            if action.text() == 'Pretend 2024':
+                action.trigger()
+        suite.check('and picking one reinstalls that one, not the first in the list',
+                    len(calls) == 1 and calls[0][1] == '2024', str(calls))
+        suite.check('and the question it asked named it too',
+                    shown['ask'] and '2024' in shown['ask'][-1][1], str(shown['ask']))
+
         # -- removing the project ------------------------------------- #
         answers['ask'] = True
         main._remove_project()
