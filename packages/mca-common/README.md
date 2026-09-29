@@ -23,7 +23,8 @@ Each piece lands finished rather than copied and marked for later.
 | `modifiers/` | ported, 25 checks |
 | `paths/paths.py`, `utils/dcc_util.py` | ported, 24 checks |
 | `resources/` | ported, 22 checks — the art itself stays out, see `resources/README.md` |
-| `pyqt/` window classes | next |
+| `pyqt/common_windows.py`, `messages.py`, `file_dialogs.py` | ported, 26 checks |
+| `pyqt/` (movies, syntax highlighter, widget helpers) | next |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
@@ -236,6 +237,27 @@ carrying the names of commercial packs — has not come across.
 Resources are found at start-up and **built when something asks for one**. Registering used
 to construct a `QIcon` *and* a `QPixmap` for every file it found before anything had asked
 for either.
+
+## Windows and dialogs
+
+```python
+class RigBuilder(common_windows.MCAMainWindow):
+    def __init__(self, parent=None):
+        super().__init__('Rig Builder', version='2.0.0', parent=parent)
+```
+
+Three window classes carried the same forty lines each — title, icon, stylesheet, remembered
+geometry, replacing the one already open — copied and then drifted: one guarded its
+stylesheet against missing resources and another did not, one saved its geometry and another
+had that commented out. Those forty lines are one mixin now.
+
+Settings were kept under `QSettings(os.getlogin(), title)` — the *user name* as the
+organisation, and `os.getlogin()` raises in a process with no controlling terminal.
+
+In the dialogs, the one that loses work: **`text_prompt_message` returned the typed text when
+the artist pressed Cancel**, because it compared the result to `'Cancel'` while the button's
+label is `'&Cancel'`. An error box also offered Yes and Cancel, and every message box's
+stylesheet was overwritten by two one-line rules applied straight after it.
 
 ## Tests
 
