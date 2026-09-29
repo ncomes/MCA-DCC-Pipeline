@@ -22,7 +22,8 @@ Each piece lands finished rather than copied and marked for later.
 | `pyqt/` (the window classes, dialogs, helpers) | to do — needs `resources/` first |
 | `modifiers/` | ported, 25 checks |
 | `paths/paths.py`, `utils/dcc_util.py` | ported, 24 checks |
-| `resources/` | next — then back for the pyqt window classes |
+| `resources/` | ported, 22 checks — the art itself stays out, see `resources/README.md` |
+| `pyqt/` window classes | next |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
@@ -217,6 +218,24 @@ same spelling the boot config, the start-up scripts and the constants use. It us
 `'Maya'`, `'Mobu'` and `'Unreal'`, matching none of them, and a path built from it
 (`Tools/Common/Tools/Maya`) worked only because Windows ignores case. `display_name()` is
 there for when a person will read it.
+
+## Resources
+
+```python
+from mca.common.resources import resources
+
+button.setIcon(resources.icon('tools/rig_builder.png'))
+window.setStyleSheet(resources.read_stylesheet('dark_theme'))
+```
+
+**No art is bundled.** The folders come from the environment the launcher builds, so a studio
+points at its own and a clone with none still runs. `resources/README.md` says why the set
+this framework was using — 1,269 icons and 21 stylesheets with no licence file, several
+carrying the names of commercial packs — has not come across.
+
+Resources are found at start-up and **built when something asks for one**. Registering used
+to construct a `QIcon` *and* a `QPixmap` for every file it found before anything had asked
+for either.
 
 ## Tests
 
