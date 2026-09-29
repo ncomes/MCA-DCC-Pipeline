@@ -18,7 +18,9 @@ Each piece lands finished rather than copied and marked for later.
 | `startup/dependencies/requirements.txt` | ported — the list the launcher installs |
 | `startup/attach.py` | new, 16 checks — how anything outside a DCC finds a project |
 | `startup/configs/common_env.py` | **dropped** — see below |
-| `pyqt/` | to do |
+| `pyqt/pygui.py`, `pyqt/qt_utils/windows.py` | ported, 21 checks |
+| `pyqt/` (the window classes, dialogs, helpers) | to do — needs `resources/` first |
+| `modifiers/`, `paths/paths.py`, `resources/` | next |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
@@ -156,6 +158,22 @@ a sentence saying so.
 It also reports when a *different* `mca` is already imported — a pip-installed mca-common in
 an editor's venv, say — because a framework quietly running from the wrong copy is a day of
 confusion. `replace=True` drops those modules so the project's copy wins.
+
+## Qt
+
+`pyqt/pygui.py` is the one place that knows which Qt this DCC has — PySide6 in Maya 2025 and
+2026, PySide2 in 2022, 2024 and MotionBuilder. Everything that draws imports from there.
+Without either, it says so (`AVAILABLE` is False and using it raises a sentence) rather than
+handing back a stub that raises `AttributeError: QWidget` somewhere far away.
+
+`pyqt/qt_utils/windows.py` finds and closes the framework's windows — what `shutdown()` uses.
+A window the framework makes is **marked with a Qt property** now; the old version matched
+`'MCA '` in the window title, with a special case to spare `'MCA Editor'`, so renaming a tool
+stopped its window being closed and a scene called MCA-anything got closed instead. The title
+match stays as a fallback for windows built by tools that have not been ported yet.
+
+`get_mca_window_by_name` compared a widget to a string — `if win == name` — so it returned
+None every time it was ever called. It works now.
 
 ## Tests
 
