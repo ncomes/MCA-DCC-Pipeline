@@ -14,7 +14,7 @@ Two things the old versions got wrong and these do not:
 import logging
 
 # PySide6 imports
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QMovie
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QMessageBox, QPlainTextEdit
 from PySide6.QtWidgets import QProgressBar, QVBoxLayout
@@ -106,6 +106,10 @@ def _box(title, text, parent, detail, icon):
     return box
 
 
+#: How tall the logo is drawn in the progress window.
+LOGO_HEIGHT = 96
+
+
 class ProgressWindow(QDialog):
     """
     A modal window for a job measured in minutes, with its output on show.
@@ -135,8 +139,17 @@ class ProgressWindow(QDialog):
         animation = resources.movie('Logo_InAndOut.gif')
         if animation:
             self.picture = QLabel()
+            self.picture.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.movie = QMovie(animation)
+            # At its own size the logo fills the window and pushes pip's output - the thing
+            # somebody actually watches during a first install - off the bottom.
+            self.movie.jumpToFrame(0)
+            natural = self.movie.currentPixmap().size()
+            if natural.height() > 0:
+                scale = LOGO_HEIGHT / float(natural.height())
+                self.movie.setScaledSize(QSize(int(natural.width() * scale), LOGO_HEIGHT))
             self.picture.setMovie(self.movie)
+            self.picture.setFixedHeight(LOGO_HEIGHT)
             self.movie.start()
             layout.addWidget(self.picture)
 

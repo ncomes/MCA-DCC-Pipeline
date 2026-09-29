@@ -229,4 +229,125 @@ LAUNCHER_STYLE = """
                     {
                         background-color: rgba(255,182,0,0.6);
                     }
+                    
+                    /* The windows themselves. Without these the stylesheet's white text
+                       sits on the system's light background - and it cascades to child
+                       windows, so the setup window and the progress window a first run
+                       opens were white on white. */
+                    QMainWindow, QDialog
+                    {
+                        background-color: rgba(37,36,37,255);
+                    }
+
+                    QMenuBar
+                    {
+                        background-color: rgba(37,36,37,255);
+                        color: white;
+                    }
+
+                    QMenuBar::item:selected
+                    {
+                        background-color: rgba(33,86,123,1);
+                    }
+
+                    QMenu
+                    {
+                        background-color: rgba(52,52,52,255);
+                        color: white;
+                    }
+
+                    QMenu::item:selected
+                    {
+                        background-color: rgba(33,86,123,1);
+                    }
+
+                    QGroupBox
+                    {
+                        border: 1px solid rgba(78,78,78,255);
+                        border-radius: 8px;
+                        margin-top: 12px;
+                        padding-top: 10px;
+                        color: white;
+                    }
+
+                    QGroupBox::title
+                    {
+                        subcontrol-origin: margin;
+                        left: 12px;
+                        padding: 0px 4px;
+                        color: rgba(255,182,0,1);
+                    }
+
+                    QLineEdit
+                    {
+                        background-color: rgba(65,65,64,255);
+                        color: white;
+                        border: 1px solid rgba(90,90,90,255);
+                        border-radius: 4px;
+                        padding: 3px;
+                    }
+
+                    QCheckBox
+                    {
+                        color: white;
+                    }
+
+                    /* Styling a QCheckBox at all hands the indicator to the stylesheet, and
+                       an unstyled one then draws as an empty box whether it is ticked or
+                       not - which on the setup window meant "install the packages now" read
+                       as off while it was on. */
+                    QCheckBox::indicator
+                    {
+                        width: 14px;
+                        height: 14px;
+                        border: 1px solid rgba(120,120,120,255);
+                        border-radius: 3px;
+                        background-color: rgba(52,52,52,255);
+                    }
+
+                    QCheckBox::indicator:checked
+                    {
+                        border: 1px solid rgba(255,182,0,1);
+                        background-color: rgba(255,182,0,1);
+                    }
+
+                    QCheckBox::indicator:hover
+                    {
+                        border: 1px solid rgba(255,182,0,1);
+                    }
+
+                    QPlainTextEdit, QTextEdit
+                    {
+                        background-color: rgba(28,28,28,255);
+                        color: rgba(220,220,220,255);
+                        border: 1px solid rgba(78,78,78,255);
+                    }
+
+                    QProgressBar
+                    {
+                        background-color: rgba(52,52,52,255);
+                        border: 1px solid rgba(78,78,78,255);
+                        border-radius: 6px;
+                        color: white;
+                        text-align: center;
+                    }
+
+                    QProgressBar::chunk
+                    {
+                        background-color: rgba(255,182,0,0.7);
+                    }
+
+                    /* Buttons in the setup window, which has no icons to keep clear of. */
+                    QMainWindow#setup_window QPushButton
+                    {
+                        background-color: rgba(70,70,70,255);
+                        color: white;
+                        border-radius: 6px;
+                        padding: 5px 10px;
+                    }
+
+                    QMainWindow#setup_window QPushButton::hover
+                    {
+                        background-color: rgba(255,182,0,0.6);
+                    }
                     """

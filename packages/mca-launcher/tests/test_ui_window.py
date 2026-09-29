@@ -313,6 +313,39 @@ def body(suite):
                     main.project_bar.current_project() == '', main.project_bar.current_project())
 
         main.close()
+
+        # -- what a machine that has never run this sees ---------------- #
+        # There are no projects now, so the launcher opens the setup window by itself: with
+        # nothing set up there is nothing to launch, and the one thing it needs is a project.
+        first = launcher_window.LauncherWindow()
+        suite.check('with nothing set up at all, the launcher opens the project setup itself',
+                    first.setup_window is not None)
+        suite.check('and says so along the bottom, rather than just showing a window',
+                    'set up' in first.status.text(), first.status.text())
+        suite.check('and the rows are still built, so what is on the machine is visible',
+                    'pretend' in first.rows, str(list(first.rows)))
+        if first.setup_window:
+            first.setup_window.close()
+        first.close()
+
+        # -- and the first-run install skips what is not installed ------ #
+        # api.dcc_targets lists versions that can be installed as well, and a dependency
+        # install needs that version's own interpreter. Installing for one nobody has would
+        # fail on every first run that had an installer folder.
+        PretendDcc.here = ('2025',)
+        setup = setup_window.SetupWindow()
+        asked = []
+        real_ensure = api.ensure_dependencies
+        api.ensure_dependencies = lambda dcc, key, project=None, force=False, progress=None: (
+            asked.append((dcc, key)) or {'ok': True, 'result': {}, 'message': 'installed.'})
+        try:
+            setup._install_everything(None)
+        finally:
+            api.ensure_dependencies = real_ensure
+            PretendDcc.here = ('2024', '2025')
+        suite.check('the first-run install only installs for versions that are here',
+                    asked == [('pretend', '2025')], str(asked))
+        setup.close()
     finally:
         dccs.DCCS, dccs.BY_NAME = real_dccs, real_by_name
         dependencies.install = real_install

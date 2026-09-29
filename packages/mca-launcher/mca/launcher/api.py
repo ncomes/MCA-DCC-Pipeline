@@ -451,7 +451,13 @@ def unreal_projects(project=None):
     :rtype: dict
     """
 
-    name = _resolve_project(project)
+    # Asking what Unreal projects are set up is a read, and a machine with no project set up
+    # yet is a real state the window asks about on its very first draw. Refusing it there
+    # meant a logged traceback behind a window that was working perfectly.
+    name = _resolve_project(project, required=False)
+    if not name:
+        return [], 'No project is set up yet, so no Unreal projects have been added.'
+
     paths = prefs.Selections.load(name).unreal_projects
     listing = []
     unreal = dccs.get('unreal')

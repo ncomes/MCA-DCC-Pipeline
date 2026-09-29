@@ -48,6 +48,7 @@ class LauncherWindow(QMainWindow):
 
         self.rows = {}
         self.setup_window = None
+        self.has_projects = False
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -104,6 +105,15 @@ class LauncherWindow(QMainWindow):
         self.refresh_button.clicked.connect(self.refresh)
 
         self.refresh()
+
+        # A machine with nothing set up has nothing to launch, and the one thing it needs is
+        # the project. Opened here rather than on every refresh, so removing the last project
+        # does not shove a window in front of somebody who was tidying up. The old launcher
+        # did this from a separate start-up script that decided by asking whether any prefs
+        # file existed at all, which is how a half-configured project got past it.
+        if not self.has_projects:
+            self._say('Nothing is set up on this machine yet. Start with the project.')
+            self._open_setup(None)
 
     # ------------------------------------------------------------------ #
     # Building
@@ -168,6 +178,7 @@ class LauncherWindow(QMainWindow):
             return
 
         names = [one['name'] for one in listing['result']['projects']]
+        self.has_projects = bool(names)
         self.project_bar.set_projects(names, listing['result']['current'])
         self._refresh_rows()
 

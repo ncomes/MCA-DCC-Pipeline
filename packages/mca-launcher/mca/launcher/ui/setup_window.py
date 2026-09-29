@@ -84,6 +84,7 @@ class SetupWindow(QMainWindow):
         super().__init__(parent)
 
         self.setWindowTitle('MCA Project Setup')
+        self.setObjectName('setup_window')
         self.setMinimumWidth(640)
         style.apply(self)
 
@@ -282,7 +283,11 @@ class SetupWindow(QMainWindow):
                 # project has been added. Left until then.
                 continue
             for target in entry['targets']:
-                jobs.append((entry['dcc'], target['key'], target['label']))
+                # Only what is actually on this machine. The listing includes versions that
+                # can be installed, and a dependency install needs that version's own
+                # interpreter - which a version nobody has installed does not have.
+                if target.get('installed'):
+                    jobs.append((entry['dcc'], target['key'], target['label']))
 
         if not jobs:
             self.status.setText('No installed DCC was found, so there is nothing to install '
