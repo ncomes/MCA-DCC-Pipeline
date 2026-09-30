@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**707 checks in 10 suites** so far.
+**817 checks in 12 suites** so far.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -35,6 +35,8 @@ any of this.
 | `utils/attr_utils.py` | ported, 146 checks — an integer attribute could not be created at all |
 | `utils/groups.py` | ported, 30 checks |
 | `utils/node_util.py`, `utils/ma_fileio.py`, `utils/textures.py` | ported, 68 checks — rebuilding a compound attribute always failed |
+| `utils/material_utils.py` | ported, 61 checks — three ways to crash the shader build |
+| `utils/scene_utils.py` | ported, 49 checks — backups went to a hard-coded `C:\export_backup` |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -448,3 +450,63 @@ what it cannot rebuild is data that cannot come back.
   the overlay came off, that stand-in was deleted — and Maya leaves an attribute at its
   *default* when the node driving it is deleted, not at the value it held before it was
   connected. A shader that had been 0.2, 0.4, 0.6 came back mid-grey.
+
+## `utils/material_utils.py` — the viewport shader built from an asset's maps
+
+Given any one of an asset's texture maps, the rest are found in the same folder by their suffix
+and wired onto a blinn. It is deliberately a blinn: it has to draw in Maya's own viewport, on
+every artist's machine, with no plugin loaded.
+
+- **A material with a packed metal/rough/ambient map and no diffuse crashed twice.** `build`
+  reads `use_alpha` in the packed-map branch, and that name is only ever assigned inside the
+  diffuse and mask branches — `UnboundLocalError`. The line after it calls
+  `create_texture(self.diffuse_path)` with that path still `None`, which is a `TypeError` in
+  `os.path.basename`.
+- **A texture folder holding only a normal map crashed as well**: neither branch runs, so
+  `self.material_node` is still `None` when the normal branch calls
+  `self.material_node.disconnectAttr('normalCamera')`.
+- **`create_basic_blinn` tested the wrong attribute.** Three checks in a row, and the third reads
+  `if not material_node.specularRollOff.connections(): material_node.diffuse.set(1.0)` — the
+  second check's condition with the third's action, so `diffuse` was set according to whether
+  `specularRollOff` was connected.
+- **The deferred UV tile preview was not deferred.**
+  `pm.evalDeferred(pm.mel.generateUvTilePreview(name))` calls the MEL procedure *now* and hands
+  its result to `evalDeferred` — the opposite of what the comment beside it says it is for, and
+  the comment is right. It is also a procedure a batch Maya does not have, so it raised there.
+- **`replace_material` abandoned its own clean-up**: a `return` inside the loop over shading
+  groups where a `continue` was meant, so the `pm.delete` at the end never ran and the old
+  material and its shading groups stayed in the scene.
+- **`get_object_material_face_dict`'s error path was itself an error**:
+  `logger.warning(log_string='...')` — `warning` has no `log_string` parameter, so a shading
+  engine with no surface material raised `TypeError` from inside the handler meant to report it.
+  It had one caller, `node_util.rbf_retarget`, which has none of its own; both are gone, and with
+  them this module's imports of `OpenMaya` and `om_utils`.
+- `consolidate_materials` declared a `things_to_delete` list and never used it; a remap node's
+  `outputMax` was set twice in a row to two different values; `DefaultMaterial` kept its found
+  maps on the *class* rather than the instance, and reached for the hardware rendering globals
+  node without checking there was one.
+
+## `utils/scene_utils.py` — clearing the rubbish out of a scene
+
+- **`backup_scene` wrote to a hard-coded `C:\export_backup`.** Not under the project, not under
+  the user's preferences, not configurable, and not a path that exists on a machine that is not
+  Windows.
+- **`backup_scene` cleaned the scene before saving it.** A function called "backup" that modifies
+  the thing it is backing up is a poor trade: the file on disk is a *cleaned* copy, and the scene
+  the artist is looking at has had nodes deleted out from under it. That is a separate argument
+  now, off by default.
+- **`clean_imported_nodes` broke every name it answered with.** `node.replace('|', '')` strips
+  the separators out of a DAG path, so `grpA|grpB|pSphere1` came back as `grpAgrpBpSphere1` — a
+  name for nothing. It also used the *old* Maya API, `maya.OpenMaya`, alone among the modules in
+  this package, and its index bookkeeping assumed one name added to a selection list is one entry
+  in it.
+- **`delete_garbage`'s skip list could never match**: `connection_node in
+  ['characterPartition']` compares a PyNode against a string, so the one node it meant to protect
+  was deleted like any other. Its Maya-version check was dead, and inside it was a second dead
+  check — `if 'hyperGraphLayout' in straight_delete_types: remove(...)` — on a list built two
+  lines above from two literals, neither of which is that.
+- **Two functions were second copies of other modules' work.** `delete_empty_namespaces` and
+  `delete_empty_display_layers` did the same jobs as the ones in `utils/namespace.py` and
+  `utils/display_layers.py`, differently. They call those now.
+- `delete_unused_shader_nodes` drives a Hypershade menu item through MEL, which a batch Maya has
+  not loaded — it says so and returns rather than raising.
