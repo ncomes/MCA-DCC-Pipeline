@@ -38,8 +38,8 @@ Each piece lands finished rather than copied and marked for later.
 | `assetlist/` (asset manager, validate_assets) | ported, 39 checks |
 | `assetlist/assetlist_api.py` | ported, 50 checks — **assetlist done** |
 | `assetlist/migrate_to_unified.py`, `migrate_asset_ids.py` | **dropped** — see below |
-| `animlib/` | next |
-| `tools/` (doccrawler, toolbox, assetregister) | to do — 14,700 lines of UI |
+| `animlib/` | ported, 71 checks |
+| `tools/` (doccrawler, toolbox, assetregister) | next — 14,700 lines of UI |
 
 ## Logging
 
@@ -686,6 +686,41 @@ What changed:
 - **`reload` re-reads the category configuration too.** The configuration is read once and kept
   now, so a category another session added would never have appeared.
 - `check_assets` reports the duplicate display names the validation report gained.
+
+## The animation library
+
+```python
+from mca.common.animlib import animlib_api
+
+animlib_api.list_clips(character='frostwind')
+```
+
+A catalog of clips, and where each clip's files live: the DCC-agnostic half, so a browser, an
+MCP tool and a script all drive one code path. Anything that touches a Maya scene is in
+`mca.mya.tools.animlibrary`.
+
+This is the newest code in the package and most of it came across as it stands, tests included
+— the depot's own `tests/animlib/test_animlib_core.py` is now `tests/test_animlib.py`, on the
+same harness as everything else and with the extraction planner covered, which it was not.
+Four things changed:
+
+- **The project list ignored `MCA_PREFS_ROOT`.** `get_projects_file()` built
+  `<Documents>/mca_preferences/anim_library_projects.json` by hand, so the launcher's first-run
+  sandbox did not contain it and a test run wrote into a real machine's Documents folder. It
+  asks `project_paths.get_preferences_root()`, which is the same folder and is the one that
+  variable moves. The suite needs no monkeypatching now, which is the proof.
+- **The catalog was written outside source control.** The library normally lives under the
+  common tools path, which is versioned, so the first save never added `catalog.json` and every
+  save after that was writing to a read-only file. It goes through the interface now — checkout
+  on a file that was there, add on one that was not.
+- **`find_animation_files` scanned each subtree once per folder deep.** It walked for folders
+  called `Animations`, then walked each one's whole subtree — and let the outer walk descend
+  into that subtree too, so every folder inside it started another full walk. The depot has
+  ~1,100 animation files in deep trees.
+- **A catalog record with no name became a clip called nothing.** `_ingest` derived a missing
+  id from character and name, and `build_clip_id` answers the character on its own when there
+  is no name — so a nameless record was kept under the character's own id, where it would
+  collide with the next one.
 
 ## What is not coming across
 
