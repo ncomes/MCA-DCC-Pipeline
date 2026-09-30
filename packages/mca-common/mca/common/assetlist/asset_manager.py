@@ -39,11 +39,16 @@ from collections import defaultdict
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Set
 
 from mca.common import log
-from mca.common.paths import paths
-from mca.common.textio import alistio
+from mca.common import sourcecontrol
 from mca.common.assetlist import unified_entry
+from mca.common.paths import paths
+from mca.common.textio import alistio, jsonio
+from mca.common.utils import fileio
 
 logger = log.MCA_LOGGER
+
+#: What the file listing a project's categories is called, for saying so in a message.
+CATEGORIES_MANIFEST = 'categories.json'
 
 _CORE_KEYS = {
     "name",
@@ -668,12 +673,31 @@ class AssetManager:
             return
 
         asset_list_root = paths.get_asset_list_path()
+        declared = set()
         for category in manifest.get('categories', []):
             name = category.get('name')
             if not name:
                 continue
+            declared.add(name)
             folder = os.path.join(asset_list_root, category.get('folder', 'Assetlists'))
             self._ingest_category_file(folder, name)
+
+        # A category the project's own config has but the manifest does not is loaded anyway.
+        # **Nothing in the framework wrote this manifest**: the migration did, and it has been
+        # run. So a category added through the register - which writes asset_data.config and
+        # nothing else - was declared nowhere, and every asset registered into it was written
+        # to its .alist file and then loaded by nothing, because this is what every tool reads
+        # the registry through. The register declares a new category now
+        # (:func:`declare_category`), and this picks up the ones added before it did.
+        from mca.common.assetlist import asset_paths
+
+        configured = set(asset_paths.AssetDictData.load().categories_names)
+        missing = sorted(configured - declared)
+        for name in missing:
+            self._ingest_category_file(os.path.join(asset_list_root, 'Assetlists'), name)
+        if missing:
+            logger.info('These categories are in asset_data.config but not in %s, and were '
+                        'loaded anyway: %s', CATEGORIES_MANIFEST, ', '.join(missing))
 
     def _ingest_category_file(self, folder, category_name):
         """
@@ -973,6 +997,52 @@ class AssetManager:
             _dfs(asset_id, [asset_id])
 
         return report
+
+
+def declare_category(name: str, folder: str = 'Assetlists') -> bool:
+    """
+    Put a category into the project's ``categories.json``, so that everything reading the
+    registry knows it exists.
+
+    :param str name: The category's name, which is also its ``.alist`` file's name.
+    :param str folder: Which folder under the asset list root holds that file.
+    :return: Whether the manifest was written. False when there is no project, or when the
+        category was already declared.
+    :rtype: bool
+
+    Nothing in the framework did this. The manifest was written once, by the migration, and the
+    register - the one place a person adds a category - wrote only ``asset_data.config``. So a
+    new category was declared nowhere, and the assets registered into it were loaded by
+    nothing.
+    """
+
+    manifest_path = paths.get_categories_manifest_path()
+    if not name or not manifest_path:
+        return False
+
+    manifest = {}
+    if os.path.isfile(manifest_path):
+        manifest = alistio.read_alist_file(manifest_path, default={}) or {}
+    if not isinstance(manifest, dict):
+        logger.error('%s could not be read, so "%s" was not declared in it.',
+                     CATEGORIES_MANIFEST, name)
+        return False
+
+    manifest.setdefault('version', '2.0')
+    categories = manifest.setdefault('categories', [])
+    if any(isinstance(entry, dict) and entry.get('name') == name for entry in categories):
+        return False
+
+    categories.append({'name': name, 'folder': folder})
+    fileio.touch_path(manifest_path)
+    existed = os.path.isfile(manifest_path)
+    sourcecontrol.checkout(manifest_path)
+    jsonio.write_to_json_file(manifest, manifest_path)
+    if not existed:
+        sourcecontrol.add(manifest_path)
+    logger.info('Declared the category "%s" in %s.', name, CATEGORIES_MANIFEST)
+
+    return True
 
 
 _DEFAULT_MANAGER: Optional[AssetManager] = None

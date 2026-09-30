@@ -39,7 +39,9 @@ Each piece lands finished rather than copied and marked for later.
 | `assetlist/assetlist_api.py` | ported, 50 checks — **assetlist done** |
 | `assetlist/migrate_to_unified.py`, `migrate_asset_ids.py` | **dropped** — see below |
 | `animlib/` | ported, 71 checks |
-| `tools/` (doccrawler, toolbox, assetregister) | next — 14,700 lines of UI |
+| `tools/assetregister` (11 modules) | ported, 27 checks |
+| `tools/doccrawler` | next — the introspection half only |
+| `tools/toolbox` | to do — 6,475 lines |
 
 ## Logging
 
@@ -721,6 +723,60 @@ Four things changed:
   id from character and name, and `build_clip_id` answers the character on its own when there
   is no name — so a nameless record was kept under the character's own id, where it would
   collide with the next one.
+
+## The asset register
+
+```python
+from mca.common.tools.assetregister import unified_register
+
+unified_register.UnifiedRegisterUI().show()
+```
+
+The window artists create and edit assets in: eleven modules, 6,050 lines, split out of one
+window so each area reads on its own. The split was done mechanically — every file says "the
+code is unchanged" — and it copied the same block of imports into all eleven, whether they used
+them or not. **Seven of the eleven imported `mca.common.p4v.perforce` and none of those seven
+used it**, so the register pulled Perforce in seven times over and could not be imported on a
+machine without it. The whole register's real Perforce surface was two calls, both in
+`register_vcs`. They go through `mca.common.sourcecontrol` now, `register_p4` is
+`register_submit`, and the progress dialog is titled for whichever source control answered.
+
+Three things were broken.
+
+**The register could not register anything.** `_save_new_asset` hands the whole form to
+`UnifiedAssetEntry.create(**data)`, and the form includes `variant_of`, which `create` did not
+take — so saving a new asset raised `TypeError: unexpected keyword argument 'variant_of'`.
+`create` takes it now, which also lets `assetlist_api` stop setting it by hand afterwards.
+
+**The register generated the wrong kind of asset id, and that is where the duplicates in the
+real registry come from.** It built the id as
+`strings.remove_chars(name, chars='[^a-zA-Z0-9]+').lower()` — no category, no underscores — so
+"Hero Bot" in Characters became `herobot`, while `unified_entry.build_asset_id`, which
+everything else uses, makes `characters_hero_bot`. Every asset registered through this window
+since the id scheme changed got the old kind. That is exactly the shape of the 29 duplicate
+display names in the live registry: `pirateshoes` beside `shoes_pirate`, `teddy_hat` beside
+`hats_teddy`, `agentmale` beside `agent_male` — the same asset, once through the window and once
+through anything else. One function makes an id now, and it follows the category as well as the
+name.
+
+**A category added through the register was invisible to everything that reads assets.**
+`AssetManager` loads the categories `categories.json` declares, and **nothing in the framework
+ever wrote that file** — the migration did, once, and it has been run. The register's `+` button
+wrote `asset_data.config` and stopped there, so a new category was declared nowhere and every
+asset registered into it was written to its `.alist` and then loaded by nothing.
+`asset_manager.declare_category()` writes the manifest now, the register calls it, and the
+manager also loads any category the project's config has and the manifest does not — which
+picks up the ones added before this was fixed.
+
+Also: a move between categories wrote the destination first and only then removed the asset from
+where it came from, checking neither save; `assetlist_api.transfer_asset` did it the other way
+round, also checking neither, each with a comment explaining why its own order was the safe one.
+They agree now, on the order whose failure is recoverable — listed twice, which somebody can see
+and fix, rather than lost, which nobody can. And fourteen names with a leading underscore that
+four sibling modules imported are public, `waggle_gif` among them (spelled
+`_resolve_taillwaggle_gif`, with the doubled l), which now asks the resources module rather than
+looking for the animation inside the package's own folder, where this repository keeps no art at
+all.
 
 ## What is not coming across
 

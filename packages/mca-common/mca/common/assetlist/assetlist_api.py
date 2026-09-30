@@ -1189,9 +1189,8 @@ def register_asset(name, category, subtype='', faction='', skeleton='', body_typ
         asset_name=name, category=category, subtype=subtype, faction=faction,
         skeleton=skeleton, body_type=body_type, asset_type=asset_type,
         built_for=built_for, slot=slot, description=description,
-        path=path, engine_path=engine_path, asset_id=asset_id or None)
-    if variant_of:
-        entry.variant_of = variant_of
+        path=path, engine_path=engine_path, asset_id=asset_id or None,
+        variant_of=variant_of)
 
     if registry.get_asset_entry(entry.asset_id, skip_dialog=True):
         raise ValueError(f'An asset with id {entry.asset_id!r} already exists in {category}. '

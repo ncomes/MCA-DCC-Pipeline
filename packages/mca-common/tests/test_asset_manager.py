@@ -8,6 +8,7 @@ The asset registry's read layer: every asset, indexed, and what is wrong with th
 import io
 import json
 import os
+import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -37,8 +38,12 @@ def write_project(temp, categories, manifest_version='2.0', gear_categories=()):
     project = os.path.join(temp, 'project')
     assetlist = os.path.join(project, 'Tools', 'Common', 'Tools', 'Assetlist')
     assetlists = os.path.join(assetlist, 'Assetlists')
-    if not os.path.isdir(assetlists):
-        os.makedirs(assetlists)
+    # Each scenario starts from nothing. The manager loads a category that is in the project's
+    # config but not in its manifest, so a leftover .alist from the scenario before would be
+    # picked up by the one after.
+    if os.path.isdir(assetlist):
+        shutil.rmtree(assetlist)
+    os.makedirs(assetlists)
 
     jsonio.write_to_json_file(
         {'version': manifest_version,

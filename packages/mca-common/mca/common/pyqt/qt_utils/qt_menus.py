@@ -26,7 +26,7 @@ from mca.common.pyqt import pygui
 logger = log.MCA_LOGGER
 
 
-def _action_class():
+def action_class():
     """
     :return: QAction, which is in QtWidgets in PySide2 and QtGui in PySide6.
     """
@@ -131,12 +131,12 @@ class MainWindowsMenus(object):
         :return: The action, or None when there is no Qt.
         """
 
-        action_class = _action_class()
-        if action_class is None:
+        wanted = action_class()
+        if wanted is None:
             return None
 
         menu = menu or self.menu
-        action = action_class(action_name, menu)
+        action = wanted(action_name, menu)
         action.setObjectName(action_name)
         action.triggered.connect(fn)
 
@@ -187,8 +187,8 @@ class MainWindowsMenus(object):
         """
 
         menu = menu or self.menu
-        action_class = _action_class()
-        if menu is None or action_class is None:
+        wanted = action_class()
+        if menu is None or wanted is None:
             return False
 
         # actions(), not children(), and the answer comes after the whole loop - the version

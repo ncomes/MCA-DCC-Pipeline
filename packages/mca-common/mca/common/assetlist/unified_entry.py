@@ -561,7 +561,8 @@ class UnifiedAssetEntry(asset_list.AssetBaseEntry):
                path_flags=None,
                path_order=None,
                is_gear=None,
-               gear_root=None):
+               gear_root=None,
+               variant_of=''):
         """
         Create a new UnifiedAssetEntry with the full unified schema.
 
@@ -611,6 +612,10 @@ class UnifiedAssetEntry(asset_list.AssetBaseEntry):
             materials at runtime. Channel types come from the parent
             asset's ``dyes`` schema; values here are the raw value to
             push (list[float] for ``linear_color``, float for ``scalar``).
+        :param str variant_of: For a character that is a restyle of another, that base
+            character's **asset id**. See :attr:`variant_of` for why it is an id rather than a
+            name. The register UI passed this in and ``create`` did not take it, so **saving a
+            new asset raised TypeError** - the register could not register anything.
         :param bool is_gear: Force gear placement (path under the gear root).
             None derives it: a ``built_for`` parent or a category flagged
             IS_GEAR in the asset config both count as gear.
@@ -710,6 +715,7 @@ class UnifiedAssetEntry(asset_list.AssetBaseEntry):
                 'dye_overrides': dye_overrides or {},
                 'path_flags': effective_flags,
                 'path_order': effective_order,
+                'variant_of': str(variant_of or '').strip(),
             }
         }
 
