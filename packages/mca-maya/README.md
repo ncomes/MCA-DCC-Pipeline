@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**2,013 checks in 29 suites** so far — 2,029 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more.
+**2,106 checks in 30 suites** so far — 2,122 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -73,6 +73,7 @@ any of this.
 | `rigging/rfk_chain.py`, `rigging/rfk_stretch_chain.py` | ported, 86 checks — a stretch chain too short to stretch divided by zero |
 | `deformations/cluster.py`, `rigging/reference_line.py` (new), `rigging/ik_chain.py` | ported, 70 checks — a cluster built inside a namespace raised `TypeError` |
 | `rigging/skel_utils.py` | ported, 67 checks — exporting over a read-only file failed, and restoring markup cleared every weight lock |
+| `rigging/frag/frag_base.py`, `rigging/frag/__init__.py` | ported, 93 checks — no rig has ever been brought up to a new component version |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1481,3 +1482,66 @@ put markup back onto a skeleton that has lost it.
   Maya version beside them — a format no reader in the pipeline understands — and nothing called it,
   which is the same test `serialize_flag` was dropped by. What is left is a path and two methods, and
   dropping `icon` takes this module's dependency on `mca.common.resources` with it.
+
+## `rigging/frag/frag_base.py` — the metadata node a rig is described by
+
+A FRAG rig is a Maya rig with a second, invisible structure over it: a graph of `network` nodes, one
+per piece of the rig, each carrying the *name of the Python class* that knows what to do with it.
+That name — the `fragType` attribute — is all a node carries, so `FRAGNodeRegister` keeps a table of
+every FRAGNode subclass by class name, and `FRAGNode(node)` turns a node found in a scene back into
+an instance of the right class. The graph itself is message attributes: a child's `fragParent`
+connected from its parent's `fragChildren`.
+
+Each class also carries a `VERSION`, and each node the version it was built at. When a component
+changes what it stores, its version goes up and it gains a `_update_version_<n>_to_version_<n+1>`
+method, which `update()` is meant to run.
+
+- **No rig has ever been brought up to a new component version.** `update()` builds the method name
+  out of the version it reads off the node — and the version is stored on a **`double`** attribute, so
+  a node at version 1 reads back as `1.0` and the method asked for is
+  `_update_version_1.0_to_version_2.0`. Five components (`ikfk`, `reverse_foot`, `spline_ik`,
+  `channel_float`, `ribbon` ×2) carry a `_update_version_1_to_version_2`, and every one of them has
+  been unreachable: opening an old rig and updating it raises `AttributeError` instead. Versions are
+  read as whole numbers now, a node built by a newer pipeline than the code reading it is left alone
+  with a warning rather than walked past in silence, and a missing step names the node, the class and
+  the method.
+- **`get_frag_node_parents` raised as soon as a node had a parent at all.** Its first line is
+  `pm.PyNode(node)`, and it passed its own answer — a `FRAGNode` — back into itself, which
+  `pm.PyNode` refuses with `MayaAttributeError`. The only input it could ever answer for was a node
+  with no frag parent, which answers the empty list. Nothing in the pipeline called it, so it is
+  dropped; the module-level `get_frag_parent` takes a `FRAGNode` as well as a node now, which is the
+  trap it fell into.
+- **Reloading the package left the register pointing at the classes from before the reload.** Each
+  class name is registered once. On a second import the metaclass compared the two module paths,
+  found them equal — which is exactly what a reload looks like — and then did nothing, so the
+  register kept the stale class and `FRAGNode(node)` handed back instances of it, with every
+  `isinstance` check against the new class failing. `frag/__init__.py` drops its submodules from
+  `sys.modules` and imports them again *specifically* so edited code is picked up, so this is the
+  case that mattered. A class from the same module now replaces the registered one; only a clash from
+  a genuinely different module is refused.
+- **One FRAG node this pipeline cannot wrap stopped every walk over the scene.** `get_all_frag_nodes`
+  wraps everything `is_frag_node` says yes to, and `is_frag_node` says yes to a node carrying only
+  the legacy `xrigType` — which `FRAGNode` then refuses, as it does any `fragType` naming a class
+  whose package is not loaded. So one legacy node, or one component from another project, and the
+  call raised. The walkers report what they cannot wrap and carry on. The mismatch itself stays:
+  `is_frag_node` answers "is this one of ours", and a node with no class name on it is still ours and
+  still unwrappable.
+- **`is_frag_node(None)` raised** `RuntimeError: Too few arguments given` out of `pm.objExists`, and
+  asking about a name that is not in the scene logged a *warning* — which is a question answered, not
+  a problem.
+- **A `frag_type` that is not a registered class left an orphan network node behind**, because
+  `create` made the node, wrote all four attributes, and only then tried to wrap it.
+- **`set_frag_parent` accepted something it could not use.** It checks its argument with
+  `is_frag_node`, which says yes to a raw network node, and then reaches for `.pynode` on it.
+- `get_frag_root` and `get_asset_id` read the node passed to them and never touch `self`, which their
+  own docstrings had to apologise for; they are `staticmethod`s now, and every existing caller — all
+  of which call them on an instance — still works. `get_frag_root`'s loop recomputed the same parent
+  on the iteration it found the root. The two node-unwrapping ladders in `connect_node` and
+  `connect_nodes` were the same ladder twice, now one `_as_pynode`. `add_frag_child`, `set_attr`,
+  `add_attr`, `list_attr_connections` and `list_frag_node_connections` have no callers anywhere in
+  the pipeline and are gone; the forwarders that do have callers stayed.
+
+`frag/__init__.py` came over as it stands — it is a recent rewrite, and the dynamic export is what
+lets a build script write `frag.FKComponent` without knowing which module defines it. Its
+`COMPONENT_MODULES` lists what has been ported rather than what there will be, the same way the
+package manifest does, and entries come back as the components land.
