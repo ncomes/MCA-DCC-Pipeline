@@ -30,8 +30,9 @@ Each piece lands finished rather than copied and marked for later.
 | `utils/folders.py`, `project.py`, `prefvars.py` | **dropped** — see below |
 | `utils/pymaths.py` | ported, 38 checks — half of it dropped |
 | `utils/plastic.py` | to do — with the source-control interface |
-| source control (`p4v`, `plasticscm`, `utils/plastic.py`) | next — behind one interface |
-| `tools/` | to do |
+| `sourcecontrol/` | ported, 33 checks — one interface, Perforce behind it |
+| `plasticscm/`, `utils/plastic.py` | **dropped** — see below |
+| `tools/` (8 of them) | next |
 | `animlib`, `assetlist`, `modifiers` | to do |
 
 ## Logging
@@ -422,6 +423,57 @@ which is the one the rigging code calls. `inverse_distance_weight_1d`, `snap_val
 `roundup`, `get_range_percentage`, `map_range_clamped`, `map_range_unclamped`, `AXIS`, `PI` and
 `MAX_INT`: no callers.
 
+## Source control
+
+```python
+from mca.common import sourcecontrol
+
+sourcecontrol.checkout(scene_path)
+if not sourcecontrol.submit(files, 'rig: hero, arm fixes'):
+    ...
+```
+
+One interface, so that no tool names Perforce. Which backend answers is the studio's, set by
+`MCA_SOURCE_CONTROL` — `perforce`, `none`, or unset to work it out. A machine with nothing set
+up gets `NoSourceControl`, where **every operation succeeds and does nothing**: a tool's job is
+to save the artist's file, and "there is no Perforce here" is not a reason to stop. Adding Git
+or Plastic means one class and one line in `BACKENDS`.
+
+Nothing raises. An operation answers a `Result`, which is falsy when it failed and carries what
+the tool said, so a UI has something to show.
+
+Two things were wrong with the Perforce it replaces, and both are the kind that only bite on a
+real machine:
+
+**Every command was a shell string.**
+
+```python
+p4_cmd = f'P4 -p {p4_info.port} -c {p4_info.workspace} edit -c {cl_val} {file_path}'
+subprocess.run(p4_cmd, shell=True, ...)
+```
+
+A path with a space in it — `Characters/hero rig v2.ma`, anything under `My Documents` — went
+to p4 as two paths. Commands are argument lists now, and the suite checks the exact argument
+list p4 was handed, which is the only way to prove it.
+
+**Every guard was dead.** Each operation began `p4_info = P4Info()` / `if not p4_info: return`,
+and `P4Info` is an object with no `__bool__` — always truthy. So on a machine without Perforce,
+where the constructor gave up and left `user`, `workspace` and `port` as None, every command
+ran as `P4 -p None -c None edit ...`. `available()` is a real question now, and the backend
+answers a plain failure instead of shelling out.
+
+Smaller ones: `P4Info` kept `all_workspaces = []` as a mutable class attribute of a singleton
+and appended to it without clearing, so the list grew every time anything asked;
+`find_workspace` put its `break` in the inner of two loops, so the *last* matching workspace won
+rather than the first; `p4 clients` output was split on `'\r'`, which leaves every line but the
+first starting with a newline; reading pending changelists ran `p4 describe` once per changelist
+and read the description out of the third line of a report meant for a person, where `-ztag`
+names its fields; and a missing registry key was logged as `CRITICAL ERROR: Install perforce` at
+error level, which is every machine that does not use Perforce.
+
+`shutdown()` calls `sourcecontrol.reset()`, because the workspace is found by looking for the
+project's config file in each workspace root — so switching project has to ask again.
+
 ## What is not coming across
 
 `folders.py` held one function, `get_files`, which nothing in the framework imports — and its
@@ -429,6 +481,19 @@ two branches disagreed: the recursive one walked with `os.walk` and returned fil
 one filtered `os.listdir` and returned **directories too**, from a function called `get_files`.
 
 `project.py` was ten lines of section comments and no code.
+
+`plasticscm/` is 1,824 lines — a REST client, two model layers and a set of Qt dialogs for
+Plastic SCM — and **nothing imports any of it**, anywhere in the framework. The studio moved to
+Perforce and left the words behind: `fileio`, `ma_fileio` and the scene manager all still say
+"Attempts to check out the file in plastic" above code that calls `perforce`. It can come back
+as a backend behind the interface above, from Plastic's own current API, when a project needs
+it.
+
+`utils/plastic.py` went with it. Sixty lines, and worth reading once: its module docstring says
+"Module starts Maya"; `is_plastic_server_running()` **kills the server** it was asked to ask
+about, printing `Killing Plastic Server` as it goes; `run_plastic_server` has its
+`if not server_running:` commented out, so it starts another one every time; and the `_REST`
+class it opens with has methods with no `self` and a decorator nothing ever applied.
 
 `prefvars.py` was a 217-line preference-variable system with a singleton registry, JSON
 save/load and a docstring explaining how to subclass it. Nothing subclasses it and nothing

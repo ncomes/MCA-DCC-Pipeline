@@ -148,6 +148,13 @@ def shutdown(dcc=None, config_file=None, quiet=False):
     forgotten = singleton.teardown()
     if forgotten and not quiet:
         logger.info('Forgot %s single-instance object(s).', forgotten)
+
+    # Which source control this is, and which workspace, is worked out per project - the
+    # Perforce workspace is found by looking for the project's config file in each
+    # workspace's root - so a restart into another project has to ask again.
+    from mca.common import sourcecontrol
+
+    sourcecontrol.reset()
     config.remove_sys_packages(config_file=config_file, dcc=dcc, quiet=quiet)
     remove_framework_envs()
     config.reload_modules()
