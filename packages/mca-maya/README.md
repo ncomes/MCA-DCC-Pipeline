@@ -25,6 +25,9 @@ any of this.
 |---|---|
 | `mca_package.yaml`, `mca/mya/__init__.py` | ported, 18 checks — every path in the manifest pointed at a folder that has never existed |
 | `modifiers/` | ported, 62 checks — the contexts hold the behaviour, the decorators are one line each |
+| `utils/naming.py`, `utils/namespace.py` | ported, 84 checks |
+| `utils/maya_utils.py`, `utils/plugins.py`, `utils/display_layers.py`, `utils/constraint.py` | ported, 65 checks |
+| `utils/optionvars.py` | ported, 43 checks — 269 lines to 235, and the metaclass is gone |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -113,3 +116,120 @@ value.
 - **`tools/_deprecated/`** (7,498 lines, 26 files), **`cinematics/tools/_deprecated/`** (441,
   1 file) and **`cinematics/CinematicsArchive/`** (3,450, 35 files). Nothing imports any of
   them, and the folder names say what they are.
+
+## `utils/naming.py` — taking a node name apart
+
+A Maya node name is three things joined together: a DAG path, a namespace and a base name.
+Most of the pipeline's bugs with names come from a function that handles one of the three
+being handed all three, so these say which part they answer for.
+
+What was wrong:
+
+- **`remove_illegal_characters` returned an empty string for any name with a leading or
+  trailing space.** It recursed to strip the space and then threw the recursion's result
+  away, falling through to a bare `return ''`. `make_maya_safe_name` is built on it, so
+  `' head_geo'` became `''` and the caller named a node after nothing.
+- **It also removed no illegal characters at all.** Despite its name and its docstring, it
+  only ever handled the space. A dash, a dot or a slash went through untouched, and Maya
+  either rejected the name or silently changed it.
+- **`get_node_name_parts` joined the DAG path with nothing.** `'|'.join` was written
+  `''.join`, so `'grpA|grpB|pSphere1'` came back with a long prefix of `'grpAgrpB'`. Its own
+  docstring showed the right answer two lines above the line that got it wrong.
+- **`get_unique_dagname` lost the padding.** It stripped every trailing digit and appended a
+  count, so `arm_01` became `arm_2`, and `spine_02_ctrl` — digits in the middle — became a
+  mess. It counts from the trailing number now and keeps its width.
+
+## `utils/namespace.py` — keeping two copies of a rig apart
+
+- **Every listing answered relative to wherever the caller was standing.**
+  `cmds.namespaceInfo(listOnlyNamespaces=True, recurse=True)` lists what is under the
+  *current* namespace, and answers `None` when there is nothing, so `get_all_namespaces()`
+  and `delete_empty_namespaces()` gave a different answer depending on which namespace
+  happened to be current. `camera_utils` asks `'MCAUberCam' in namespace.get_all_namespaces()`
+  before cleaning up its temporary camera namespace — that was False, and the clean-up
+  skipped, any time the scene was left standing inside a namespace. Both ask the root
+  explicitly now.
+- **`get_all_namespaces` edited the caller's list.** Given an `exclude_list` it called
+  `exclude_list.extend(DEFAULT_NAMESPACES)` on the list it was handed, so a caller keeping
+  its exclusions in a constant got a longer constant on every call.
+- **`get_namespace` could not do what its arguments said.** It appended `':'` to the node
+  name and asked whether *that* was an existing namespace, so `check_node=True` checked a
+  namespace rather than a node and answered `''` for any real node name. Every caller in the
+  pipeline passes `check_node=False`, the only setting that worked. The argument is gone.
+- **Three functions had a bare `except:`.** `purge_namespace` reported every failure as
+  "namespace does not exist", whatever had gone wrong, and `move_node_to_namespace`'s
+  `except: pass` meant a rename that failed — locked node, referenced node, name clash —
+  looked exactly like one that worked. Callers drive it through `map()` over whole
+  skeletons, so a partial move went unnoticed. Both answer with a bool now.
+
+## `utils/maya_utils.py`, `utils/plugins.py`
+
+- **`add_trusted_plugin_location_path` raised on a fresh Maya profile.**
+  `optionVar(query='SafeModeAllowedlistPaths')` answers `0` — the integer — for a variable
+  that has never been written, and the next line did `path in 0`: `TypeError: argument of
+  type 'int' is not iterable`. The plugin loader calls this before every plugin it loads.
+- `get_version` was `int(pm.about(version=True))`, and Maya's version string is not always a
+  number: a preview release answers `'2025 Preview'` and a service pack `'2019.3'`. It reads
+  the API version, which is an integer by definition.
+- **`delete_nodes_of_type` had a guard that could never fire.** It meant to protect
+  `hyperGraphLayout` with `if n in ('hyperGraphLayout',)`, where `n` is a PyNode and the
+  tuple holds a string — never equal — so the node it meant to protect was deleted like any
+  other.
+- `unload_plugin` answered False for a plugin that was not loaded, which is the state the
+  caller asked for, and `load_plugin` logged the reason it failed only when `quiet` was
+  False — and `quiet` defaults to True.
+- `get_float_version` existed in both modules, `mel.eval('getApplicationVersionAsFloat')`
+  each time, and nothing called either. Dropping them takes `maya.mel` out of both.
+
+One thing the suite cannot check in `mayapy`: `SafeModeAllowedlistPaths` is read-only in a
+batch Maya — it reports as existing, answers with an empty list, refuses
+`stringValueAppend` and survives `optionVar(remove=)`. The logic is checked against a
+variable of our own, and the real call is a no-op in batch.
+
+## `utils/display_layers.py`, `utils/constraint.py`
+
+- **`get_constraint_targets` dropped every joint.** It filtered with `isinstance(x,
+  pm.nt.Transform) and pm.nodeType(x) == 'transform'`. The second half was there for a real
+  reason — a constraint's `target` array is wired back to the constraint node, which is also
+  a transform — but it threw out the joints with it, and the pipeline's animation controls
+  *are* joints. The two callers that ask "what is driving this constraint" in order to find a
+  flag or a bake helper got an empty list whenever the answer was a joint, which is most of
+  the time.
+- **It also scrambled the order.** `list(set(...))` has no order, and `rig_component` takes
+  `get_first_in_list` of the result to decide the constraint's primary target — so which
+  target that was changed between runs on the same rig.
+- **An axis that was settable, unlocked, but already driven fell out of the skip list
+  entirely.** `constraint_safe_attrs` had no `else` for that case, so it returned two entries
+  instead of three, and Maya reads a short skip list as permission to constrain the missing
+  axis. That is the cycle the function exists to prevent.
+- `get_display_layers` kept only the first layer per node and could return the same layer
+  many times: a call over a rig's forty flags returned forty entries naming two or three
+  layers. `remove_objects_from_layers` was written with pymel's `//` operator and said
+  nothing about the nodes it failed to move.
+
+## `utils/optionvars.py` — what Maya remembers between sessions
+
+- **`load_from_file` was Python 2.** `json_data.iteritems()` raises `AttributeError` in
+  every Maya the pipeline supports. Nothing called it; it is gone with `save_to_file`.
+- **The duplicate-name check could never find a duplicate.** `inspect_all` built its set
+  with `all_registered_variable_names.union(set(used))` and threw the result away — `union`
+  returns a new set. The set stayed empty, so the check that existed to catch two tools
+  sharing an option variable name reported success every time.
+- **The defaults were shared between subclasses.** `_option_var_defaults` and friends were
+  mutable class attributes on the base, so every subclass wrote into the same dictionary
+  keyed by the bare attribute name, and two tools with a same-named option variable got each
+  other's default. The properties are built per subclass, at class definition, instead of by
+  rewriting the class on every instantiation.
+- **A list came back wrapped in a tuple.** `pm.optionVar[name] = ['one', 'two']` stores
+  something that reads back as `[('one', 'two')]`, so the second element of any list-valued
+  option variable was unreachable.
+- **A bool came back as `1`.** Maya has no boolean option variable. Values now come back as
+  the type of the declared default.
+- The registry had no callers at all — not `reset_all`, not `inspect_all`, not
+  `register_mca_option_var` — and its `__getattr__` recursed without end if anything reached
+  it before `__init__` had run. Gone, and with it the metaclass and
+  `decorators.add_metaclass`, which no longer exists in `mca-common`.
+
+A note for when the callers are ported: `namespace.get_namespace` no longer takes
+`check_node`, and five modules pass it. `camera_utils`, `cine_file_utils`, `shot_utils`,
+`scene_manager_tool` and `rig_utils` each need the argument dropped.
