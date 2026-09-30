@@ -18,6 +18,12 @@ Two rules hold for every backend:
 # python imports
 import os
 
+# MCA python imports
+from mca.common import log
+
+
+logger = log.MCA_LOGGER
+
 
 class Result(object):
     """
@@ -71,6 +77,15 @@ class SourceControl(object):
     #: What to call it, and what ``MCA_SOURCE_CONTROL`` may be set to.
     name = ''
 
+    #: A file to drop into an otherwise empty folder so that the folder can be stored at all.
+    #: Perforce and Git both version files rather than folders, so a freshly made empty folder
+    #: cannot be submitted or committed; ``''`` for a backend that does not care.
+    placeholder_name = ''
+
+    #: What goes in it, so that whoever finds one knows why it is there.
+    placeholder_text = ('A placeholder, so that this folder can be stored in source control.\n'
+                        'Safe to delete once the folder has anything else in it.\n')
+
     def available(self):
         """
         :return: Whether this machine can actually talk to it right now - the client is
@@ -88,6 +103,48 @@ class SourceControl(object):
         """
 
         raise NotImplementedError
+
+    def add_placeholders(self, folders):
+        """
+        Give every empty folder something to store, and mark it for adding.
+
+        :param folders: One folder or many.
+        :return: The placeholder files that are there afterwards, for a caller that wants to
+            submit them. Empty when this backend needs none, or when every folder already has
+            something in it.
+        :rtype: list[str]
+
+        The same for every backend that versions files rather than folders, which is all of
+        them - only :attr:`placeholder_name` differs. The version this replaces had it in
+        ``fileio``, calling Perforce from a file helper.
+        """
+
+        if not self.placeholder_name:
+            return []
+
+        written = []
+        for folder in as_paths(folders):
+            if not os.path.isdir(folder):
+                continue
+            # Anything other than our own marker means the folder has something to store.
+            contents = os.listdir(folder)
+            if contents and contents != [self.placeholder_name]:
+                continue
+
+            marker = os.path.join(folder, self.placeholder_name)
+            if not os.path.isfile(marker):
+                try:
+                    with open(marker, 'w', encoding='utf-8') as opened:
+                        opened.write(self.placeholder_text)
+                except OSError as error:
+                    logger.warning('Could not write a placeholder in %s: %s', folder, error)
+                    continue
+            written.append(marker)
+
+        if written:
+            self.add(written)
+
+        return written
 
     def checkout(self, paths, changelist=''):
         """
@@ -175,6 +232,9 @@ class NoSourceControl(SourceControl):
     """
 
     name = 'none'
+
+    #: Nothing to store, so nothing needs a marker to store it.
+    placeholder_name = ''
 
     def available(self):
         return False

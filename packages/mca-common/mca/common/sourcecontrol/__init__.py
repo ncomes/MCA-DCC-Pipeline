@@ -237,3 +237,15 @@ def submit(paths, description=''):
     """
 
     return current().submit(paths, description=description)
+
+
+def add_placeholders(folders):
+    """
+    Give every empty folder something to store, where source control needs that.
+
+    :param folders: One folder or many.
+    :return: The placeholder files that are there afterwards.
+    :rtype: list[str]
+    """
+
+    return current().add_placeholders(folders)

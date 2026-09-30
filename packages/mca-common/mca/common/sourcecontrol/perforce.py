@@ -51,6 +51,9 @@ class Perforce(base.SourceControl):
 
     name = 'perforce'
 
+    #: Perforce does not version directories, so an empty folder cannot be submitted.
+    placeholder_name = '.p4keep'
+
     def __init__(self):
         self.executable = shutil.which('p4') or ''
         self.user = ''

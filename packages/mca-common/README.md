@@ -35,8 +35,8 @@ Each piece lands finished rather than copied and marked for later.
 | `tools/dcctracking`, `tools/python_editor` | **dropped** — see below |
 | `tools/` (doccrawler, toolbox, assetregister) | to do — 14,700 lines of UI |
 | `assetlist/` (templates, categories, the base record) | ported, 61 checks |
-| `assetlist/` (unified entry and registry) | next |
-| `assetlist/` (asset manager, the flat API) | to do |
+| `assetlist/` (unified entry and registry) | ported, 68 checks |
+| `assetlist/` (asset manager, the flat API) | next |
 | `assetlist/migrate_to_unified.py`, `migrate_asset_ids.py` | **dropped** — see below |
 | `animlib/` | to do |
 
@@ -583,6 +583,49 @@ folder property then joined onto. And `create_folders` built its paths with a li
 appended, called `fileio.touch_and_checkout` — Perforce, from a file helper — and used the
 folders' *relative* paths, so on any machine whose working directory was not the project root it
 made the asset's folders somewhere else entirely.
+
+### The write layer
+
+```python
+from mca.common.assetlist import unified_entry, unified_registry
+
+entry = unified_entry.UnifiedAssetEntry.create('Hero Bot', 'Characters', subtype='Heroes')
+registry = unified_registry.UnifiedAssetRegistry.load('Characters', create=True)
+registry.add_asset_entry(entry)
+registry.save()
+```
+
+`unified_entry` is the most carefully written part of the registry and most of it came across
+as it was — its comments record real investigations, like why an asset id carries its category
+(ids are unique across the whole registry, and an outfit set has a Pirate body, a Pirate hat
+and Pirate shoes) and why a file scan skips Maya's incremental-save folders (one asset looked
+like it had 104 rigs, 102 of them incremental saves, and the "rig" it answered with could be a
+week old). What changed:
+
+- **A new category's file was never added to source control.** `UnifiedAssetRegistry.save`
+  wrote the file and *then* asked `if not os.path.exists(file_name)` before adding it — after
+  writing it, so the answer was always no. Every registry file created since has been sitting
+  on disk unadded.
+- **An empty registry file read as no file at all.** `load` answered None for a category with
+  no assets in it, which is exactly what a new category has — so the first asset could never be
+  added to one. It also answered None for a category with no file yet; `load(..., create=True)`
+  is how registering the first asset in a new category says so.
+- **Every add and remove rebuilt every entry in the category, and threw away the entry objects
+  callers were holding.** Fetch an entry, add another, and your entry is no longer the one the
+  registry knows about — and `save` writes what the registry knows about, so the edits go
+  nowhere. Adding assets one at a time also cost the square of their number, since each rebuild
+  re-derived every entry's path flags and dye schema. Entries are built once and kept.
+- **`get_required_path` answered None** behind a bare `except Exception: pass`, out of the
+  function every folder property joins onto, so a problem in the category config surfaced as a
+  `TypeError` somewhere else entirely.
+- **`create_folders` had a folder layout of its own** — six paths written into the code — rather
+  than the ones the asset's category says it has, so a category that had moved its meshes folder
+  got both. It asks the category now, and the placeholder an empty folder needs to be storable
+  at all goes through the source control interface, which is where Perforce's `.p4keep` and
+  Git's `.gitkeep` are the same idea.
+- **The engine path had a project's name written into it**: `build_engine_path` prefixed
+  `/Game/Wayward/`. `MCA_ENGINE_CONTENT_ROOT` says it now, so another project is another
+  variable rather than another edit.
 
 ## What is not coming across
 

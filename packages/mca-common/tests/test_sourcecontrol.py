@@ -99,6 +99,45 @@ def body(suite):
                 nothing.available() is False and nothing.info() == {})
 
     # ---------------------------------------------------------------- #
+    # an empty folder that has to be stored anyway
+    # ---------------------------------------------------------------- #
+    # Perforce and Git version files, not folders, so a freshly made empty folder cannot be
+    # submitted. The version this replaces had this in fileio, calling Perforce from a file
+    # helper.
+    empty = os.path.join(suite.temp, 'Meshes')
+    has_something = os.path.join(suite.temp, 'Rigs')
+    os.makedirs(empty, exist_ok=True)
+    os.makedirs(has_something, exist_ok=True)
+    with open(os.path.join(has_something, 'hero_rig.ma'), 'w', encoding='utf-8') as opened:
+        opened.write('//')
+
+    suite.check('with no source control, an empty folder needs no placeholder',
+                nothing.add_placeholders([empty, has_something]) == [])
+
+    class Marked(base.NoSourceControl):
+        """A backend that does version files rather than folders."""
+
+        placeholder_name = '.keep'
+
+        def __init__(self):
+            self.added = []
+
+        def add(self, paths, changelist=''):
+            self.added.extend(base.as_paths(paths))
+            return base.Result(True)
+
+    marked = Marked()
+    written = marked.add_placeholders([empty, has_something, os.path.join(suite.temp, 'nope')])
+    suite.check('an empty folder gets one, a folder with something in it does not, and a '
+                'folder that is not there is stepped over',
+                len(written) == 1 and written[0] == os.path.join(empty, '.keep'),
+                str(written))
+    suite.check('and the placeholder is marked for adding, since that is the point of it',
+                marked.added == written, str(marked.added))
+    suite.check('doing it twice does not rewrite the one already there',
+                marked.add_placeholders(empty) == written)
+
+    # ---------------------------------------------------------------- #
     # which backend answers
     # ---------------------------------------------------------------- #
     was_variable = os.environ.get(sourcecontrol.VARIABLE)
