@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**463 checks in 7 suites** so far.
+**639 checks in 9 suites** so far.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -32,6 +32,8 @@ any of this.
 | `utils/optionvars.py` | ported, 43 checks — 269 lines to 235, and the metaclass is gone |
 | `utils/dag.py` | ported, 58 checks — one function looped forever, another raised on any node with a shape |
 | `utils/om/` | ported, 133 checks — every transform attribute serialized with `'type': None` |
+| `utils/attr_utils.py` | ported, 146 checks — an integer attribute could not be created at all |
+| `utils/groups.py` | ported, 30 checks |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -318,3 +320,75 @@ rig data, and it was wrong in a way that shows up in every file the pipeline has
 - `MFnFloatArrayData` is still missing from OpenMaya 2.0 in Maya 2025, so a float array is
   read as doubles. The comment saying so was a `TODO`; it is the answer, not a task, and there
   is a check that will tell us if a future Maya adds it.
+
+## `utils/attr_utils.py` — locking, unlocking, and putting data on a node
+
+The last of those is how the pipeline stores almost everything it knows about a rig: a FRAG
+node is a network node covered in attributes, and `set_compound_attribute_groups` is what puts
+them there. So the type guessing in this module decides the shape of the data on every rig in
+the project.
+
+- **An integer attribute could not be created at all.** `MAYA_TYPE_DICT` mapped `int` to the
+  Python type `int` rather than to a Maya type name — every other entry is a string — so
+  `addAttr(attributeType=<class 'int'>)` is what a whole number produced. Any property whose
+  value was a whole number failed.
+- **Six log messages were written as bare string expressions.** `'An incoming data type does
+  not have a register in the MAYA_TYPE_DICT...'.format(...)` on a line of its own builds a
+  string and throws it away. So both places that noticed an unknown data type, the one that
+  noticed a non-string dictionary key, and the two that noticed a node with no message
+  attribute all reported nothing — and the data quietly came out wrong.
+- **`purge_user_defined_attrs` stopped at the first node that had nothing to purge.** The
+  `return` for that case sat inside the loop over nodes, so purging a selection usually purged
+  one node of it, and answered `None` rather than a list.
+- **`lock_all_keyable_attrs`' `allow_visibility` did nothing.** The test compared a
+  `pm.Attribute` against the string `'<node>.v'`, which is never equal, so the first half of
+  the `or` was always true and visibility was locked whatever the caller asked.
+- **`get_all_objects_with_attr` searched in namespaces that do not exist.** Its search string
+  was `f'{ns[1:]}:*.{attr_name}'` — dropping the first character of every namespace name, so
+  `char` was searched for as `har`. It never found anything outside the root namespace.
+- **`invert_attribute` wrote to whatever was selected.** Five of its `setAttr` calls named the
+  attribute relatively — `pm.setAttr('.min', ...)`, with no node, which means "the current
+  selection". It worked only because `createNode` leaves its node selected, and would have
+  written its values onto the wrong node the moment anything touched the selection first.
+- **`get_compound_attr_name_as_attribute` returned a class on failure** — the literal
+  `pm.nt.General.Attribute`, which is not a name that exists, so the failure path raised
+  `AttributeError` instead of reporting the missing attribute.
+- **`set_limits` treated a limit of zero as no limit.** It decided whether to lock an axis with
+  `if not any(limit_point[0])`, and `any((0, 0))` is False, so an axis deliberately pinned at
+  zero was locked and hidden as though no limit had been asked for.
+- **`set_compound_attribute_groups`' list branch tested the wrong variable.** Inside the loop
+  over a list's values it asked `isinstance(property_value, pm.Attribute)` — the whole list —
+  which is never an Attribute, so that branch never ran.
+- **`get_enum_index` raised for any enumeration whose names are not lower case.** It tested
+  membership with the string it was given and then looked up the index of
+  `enum_string.lower()`, so `'Blue'` passed the test and then failed with `ValueError`. No
+  callers; gone, with `get_indices`, `lock_and_hide_object_attrs` and
+  `create_message_compound_attr` — the last of which also had an inverted test that meant its
+  alias was never set.
+- `add_limits_for_transform`'s two parameters were named `..._loc` and documented as
+  `..._lock`, and it called `attr.lock(True)`, where pymel's `lock` takes `checkReference` —
+  so the True was asking Maya to raise if the attribute belonged to a referenced node, which
+  is not what the docstring says it does.
+- Four helpers only this module calls are private now: the reset safety check, the
+  compound-attribute lookup, the compound disconnect, and the limit-attribute builder. The
+  type-guessing block that `set_attribute` and `set_compound_attribute_groups` each carried a
+  copy of is one function.
+
+One thing this cannot fix on its own: `serialize_attribute` adds `min`, `max`, `softMin` and
+`softMax` *after* `om_plug.serialize_plug` has returned, which is why that function's
+`optimize` pass could never drop them. They are dropped here instead when they are not set, so
+`optimize` now means what it says — but data written before this change has all four keys
+present and holding `None`.
+
+## `utils/groups.py` — the transform that holds a control's offset
+
+A rig control has to be in the right place in the world and read zero in the channel box, and
+those are only compatible if something above it holds the offset.
+
+- **`create_aligned_parent_group`'s docstring promised a check it did not have.** "If an align
+  transform already exists for the object then return it" — there was no such check anywhere in
+  the function. It made a new group every time, so calling it twice on one control left two
+  groups stacked with the second holding nothing.
+- **`transform_scale` divided by the numbers it was handed** without looking, so a scale of
+  zero on any axis was a `ZeroDivisionError` from inside a rig build.
+- `create_aligned_child_group` had no docstring and no callers.
