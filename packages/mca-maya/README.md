@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**930 checks in 14 suites** so far.
+**985 checks in 15 suites** so far.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -39,6 +39,7 @@ any of this.
 | `utils/scene_utils.py` | ported, 49 checks — backups went to a hard-coded `C:\export_backup` |
 | `animation/time_utils.py`, `utils/fbx_utils.py` | ported, 57 checks — a real FBX round trip; 506 lines to 289 |
 | `utils/uvpin_utils.py` | ported, 56 checks — `is_pin_valid` always answered True |
+| `utils/events.py` | ported, 55 checks — 661 lines to 427; pausing any of thirteen events was a TypeError |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -574,3 +575,40 @@ by reading. What the suite found is another matter:
 Two modules read pins through this — `rigging/frag/uv_slide_component.py` and
 `rigging/templates/familiar_template.py` — and both were being told every shell is the whole UV
 map. Worth looking at what they do with the real answer when they are ported.
+
+## `utils/events.py` — listening for Maya's events without crashing Maya
+
+Maya holds a callback as a raw C function pointer with no Python reference behind it, so a callback
+that outlives what it belongs to does not raise: it crashes the process. Most of this module exists
+because of that, and the comments explaining it are the most valuable thing in it — they are kept
+in full, including the note about a monkey-patch that made things very much worse and the date of
+the crashes that came from it.
+
+- **Every event but two was stored in a shape the pause and resume methods could not read.**
+  `register_scene_event` and `register_selection_changed_event` filed a record — callback id,
+  arguments, how to register again — and the other thirteen filed the bare callback id.
+  `pause_event` opens with `self.events[unique_id]['message_type']`, which is `TypeError: 'int'
+  object is not subscriptable` for all thirteen. Everything is filed the same way now.
+- **Three log lines did not say what they were meant to.** Two were
+  `logger.info('Registering {unique_id}')` — no `f` — so they logged the braces. The third was
+  `logger.info(f'Registering {0}'.format(unique_id))`: an f-string *and* a `.format()`, where the
+  f-string turns `{0}` into the number zero and the `format` then has nothing left to fill. It
+  logged "Registering 0".
+- **`register_tool_changed_event` registered the callback unwrapped**, alone among the fifteen — so
+  the one kind of callback most likely to belong to a tool window had no dead-receiver guard at all.
+- **The `parent_id` property read an attribute that is never set.** `__init__` does not create
+  `_parent_id`, so the getter is an `AttributeError` waiting for its first caller.
+- **Every event fire logged twice at info level** — "Event Starting" and "Event Complete", on every
+  selection change, in a log artists read.
+- **It was the last module in the package on Maya's old API.** `maya.OpenMaya` answers a
+  `PyCapsule` for a callback id where `maya.api.OpenMaya` answers an integer — and when the whole
+  point of a module is holding on to callbacks properly, being on the API that does that matters.
+- Fifteen of the nineteen registration methods had no caller anywhere: the user events, the DAG and
+  DG families, the node and animation families, `pause_event` and `resume_event`. What is left is
+  what is called, plus the two general doors those were built on — `register_scene_event` for
+  anything in Maya's scene-message list and `register_event_callback` for anything in its named
+  event list. 661 lines became 427, most of that comments.
+
+The suite registers real callbacks in a real Maya, sets them off, pauses and resumes them, and
+leaves none behind — a callback left registered in a Maya the suite did not start is the crash this
+module exists to prevent.
