@@ -40,8 +40,8 @@ Each piece lands finished rather than copied and marked for later.
 | `assetlist/migrate_to_unified.py`, `migrate_asset_ids.py` | **dropped** — see below |
 | `animlib/` | ported, 71 checks |
 | `tools/assetregister` (11 modules) | ported, 27 checks |
-| `tools/doccrawler` | next — the introspection half only |
-| `tools/toolbox` | to do — 6,475 lines |
+| `tools/doccrawler` → `tools/docgen` | ported, 38 checks — the scraping half **dropped** |
+| `tools/toolbox` | next — 6,475 lines |
 
 ## Logging
 
@@ -777,6 +777,47 @@ four sibling modules imported are public, `waggle_gif` among them (spelled
 `_resolve_taillwaggle_gif`, with the doubled l), which now asks the resources module rather than
 looking for the animation inside the package's own folder, where this repository keeps no art at
 all.
+
+## Documentation for the packages underneath
+
+```
+python -m mca.common.tools.docgen --version 2025 --output D:/AIDocs
+```
+
+It imports PyMel, walks its core submodules, and writes a JSON file and a Markdown file per
+function plus one index — so the in-DCC AI and the MCP tools can answer a question about a PyMel
+command from the docstrings of the version that is actually installed.
+
+It was `doccrawler`, 2,247 lines, and most of it **downloaded Autodesk's documentation website
+and parsed the HTML**: a crawler (197 lines), an HTML parser (342), and a second crawler for
+`maya.cmds` (476). Its own README called that the less reliable half next to introspection, and
+it is — a page can be restyled, a URL can move, and what comes back is the documentation for
+whichever version is on the internet rather than the one installed here. That half has not come
+across, and the name went with it: a package called `doccrawler` that does not crawl is a lie in
+the import line.
+
+Nor have the paths. Two module-level constants held a previous employer's depot — where the docs
+would be written and where PyMel was to be found. `MCA_AI_DOCS_PATH` says the first now.
+
+**The docstring parser had to be rewritten, and it is the reason the output was worth little.**
+It read a Sphinx line —
+
+```
+:param str path: where to save it
+```
+
+— by splitting on `:` and taking the second piece as the parameter's name, so every parameter in
+every file was called `param str path`. A bullet line fared worse: `- path: where to save` gave
+the *description* as the name. Parameter names are most of what these files are for. It reads
+Sphinx, Google and numpy shapes now, and the suite checks each.
+
+The index is written once. It used to be read, scanned linearly and rewritten in full for every
+single function — two thousand reads and two thousand writes of a file that grew as it went, and
+quadratic on top of that.
+
+`maya.cmds` is not covered. The honest way to document it is `cmds.help(command)` from inside
+Maya, which is introspection rather than scraping, and it can be added beside this when
+something needs it.
 
 ## What is not coming across
 
