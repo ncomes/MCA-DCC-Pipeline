@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,349 checks in 20 suites** so far — 1,365 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,449 checks in 21 suites** so far — 1,465 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -62,6 +62,7 @@ any of this.
 | `modeling/` — `vert_utils.py`, `surface.py`, `geometry.py`, `follicle.py`, `blendshape_model.py` | ported, 104 checks — the closest point on a surface was answered with a position, not a parameter |
 | `modeling/rivets.py`, `modeling/face_model.py`, `modeling/blendshape_node.py` | waiting on `rigging/` and `face/` |
 | `rigging/matrix_nodes.py`, `rigging/ik_utils.py`, `rigging/space_switch_rig.py` | ported, 71 checks — building a space switch moved the control to its parent's origin |
+| `rigging/chain_markup.py`, `rigging/joint_utils.py`, `startup/configs/ma_consts.py` | ported, 100 checks — a joint could not be marked as not-exported |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -931,3 +932,71 @@ that depend on nothing: the matrix constraint, the pole vector maths, and the sp
 - `matrix_nodes` also re-fetched a node from the scene immediately after renaming it, which does
   nothing, and connected array attributes by their bare names (`worldMatrix` rather than
   `worldMatrix[0]`), which works only because Maya picks element zero for you.
+
+## `rigging/chain_markup.py`, `rigging/joint_utils.py` — the skeleton's description of itself
+
+A rig builder has to find "the left arm" in a skeleton it has never seen. Doing that by name would
+mean every skeleton in the studio being named the same way for ever, so the description is written
+onto the joints instead — `skelSide`, `skelRegion`, `chainStart`, `chainEnd`, `chainTwist`,
+`hierarchyStart`, `skExport`, `animationExport` — and the builders read that. `JointMarkup` is one
+joint's markup as properties; `ChainMarkup` walks a skeleton and sorts it into a region → side →
+chain lookup. Everything else in `rigging/` is built on the two of them, which is why they come
+before the rest.
+
+- **A joint could not be marked as not-exported.** `is_sk_export` and `is_animation_export` stored
+  "no" by *deleting* the attribute — and their getters created the attribute with a default of
+  `True` whenever it was missing. So setting either to `False` removed the attribute and the next
+  read put it back as `True`. Checked in a real Maya: set `False`, read back `True`. Both the
+  skeleton builder and the auto-rigging tool let an artist tick a joint out of an export, and
+  neither tick has ever stuck; `ChainMarkup`'s two export lists have been the whole skeleton every
+  time. The flag is stored now, and absence still means yes.
+- **Reading the markup wrote to the scene.** Those same two getters added an attribute as a side
+  effect of being asked a question, and `ChainMarkup.parse_joints` asks both of them about every
+  joint — so merely building a `ChainMarkup` to look something up added two attributes to every
+  joint in the skeleton and left the file dirty. On a referenced or locked skeleton it would have
+  failed outright. Reading answers the default and creates nothing.
+- **A region whose chain end came from another region crashed on its own middle joints.** A wrist
+  in the arm region marked `chainEnd = 'hand'` files that end under `chain_dict['hand'][side]`,
+  and builds that entry as an empty dictionary with no `'joints'` key. The guard that would have
+  created one is an `elif` on the side not being there yet — and it is there. So the next hand
+  joint with neither a start nor an end marking hit
+  `chain_dict['hand'][side]['joints'].append(...)` and raised `KeyError: 'joints'`. Reproduced
+  from the real parse order: wrist, hand, palm. `setdefault` throughout now.
+- **Clearing a chain marking raised on a joint that did not have it.** The setters read
+  `if not hasAttr(...): if val: ...add... elif not val: ...delete...`, so a joint with no
+  `chainStart` being set to `''` matched neither branch and fell through to a `set()` on an
+  attribute it had just decided not to create. Checked in a real Maya. `hierarchyStart` could only
+  be set once, for the same kind of reason — its setter called `addAttr` unguarded, so setting it
+  `True` twice raised `RuntimeError: Found no valid items to add the attribute to`. And
+  `chainStart` assumed a joint that already had the attribute also had `skelRegion`, creating the
+  region only in the branch where it did not.
+- **`parse_joints` did not reset everything it fills.** `_invalid_joints` and `_hierarchyStart`
+  were left alone, so parsing twice appended to the first pass's invalid list and kept a hierarchy
+  start that may have been removed since.
+- **A chain duplicated with no suffix was named after the word "None".**
+  `f'{name}_{suffix}'` with `suffix` left at its default gave `spine_01_None`, for every joint.
+  And **skipping the first joint of a chain raised**: `duplicate_chain` decided where to parent
+  each copy with `if index == 0`, where `index` counts the joints it was *given* rather than the
+  ones it has made — so skipping the first sent the second looking for `dup_chain[-1]` in a list
+  that was still empty.
+- Three functions assumed `pm.listRelatives` had found something: `[root] + pm.listRelatives(...)`
+  is a `TypeError` on a one-joint skeleton, `get_joint_hierarchy` iterated the same answer, and
+  `get_root_joint_from_list` called `hasAttr` on a parent walk that can come back empty.
+  `get_joint_hierarchy` also asked shape children whether their `type()` was `'joint'`, and put
+  the node it was given at the front of the list whether or not it was one.
+- `is_valid` was `not any(self._invalid_joints)` — walking a list of PyNodes testing each one's
+  truthiness to answer a question about the list's length. `remove_is_start` and `remove_is_end`
+  had no callers, and setting the property to `''` is the same thing now that it works. The
+  circular import between the two modules is gone in one direction: `skeleton_dict` is worked out
+  when it is first asked for, and imports `joint_utils` there.
+- `ma_consts` opened with four quotation marks and a docstring describing "the mca decorators at a
+  base python level" — the fourth module in this package to carry that line. `THRIDPARTY` was
+  misspelled in the constant name (not the value), so every reader had to misspell it too.
+  `PARENT_SEPARATOR` and `JOINT_TYPE_LABELS` had no readers anywhere. Gone.
+
+**Callers to rewire when their modules are ported.** `tools/ai_rig_builder/markup_applicator.py`
+reads `chain_data._invalid_joints` and `rigging/rig_utils.py` reads
+`bake_hierarchy._animationJoints` in three places — both are public properties now
+(`invalid_joints`, `animation_joints`). `startup/startup.py`,
+`startup/configs/ma_envs.py` and `startup/headless_startup.py` read `ma_consts.THRIDPARTY`, which
+is `THIRDPARTY`.
