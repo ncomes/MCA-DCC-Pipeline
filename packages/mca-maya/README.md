@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,173 checks in 18 suites** so far — 1,189 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`.
+**1,278 checks in 19 suites** so far — 1,294 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`, and `modeling/` bar the three modules that need `rigging/` and `face/` first.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -41,7 +41,7 @@ any of this.
 
 | piece | state |
 |---|---|
-| `mca_package.yaml`, `mca/mya/__init__.py` | ported, 18 checks — every path in the manifest pointed at a folder that has never existed |
+| `mca_package.yaml`, `mca/mya/__init__.py` | ported, 19 checks — every path in the manifest pointed at a folder that has never existed |
 | `modifiers/` | ported, 62 checks — the contexts hold the behaviour, the decorators are one line each |
 | `utils/naming.py`, `utils/namespace.py` | ported, 84 checks |
 | `utils/maya_utils.py`, `utils/plugins.py`, `utils/display_layers.py`, `utils/constraint.py` | ported, 65 checks |
@@ -59,6 +59,8 @@ any of this.
 | `utils/camera_utils.py` → `utils/playblast.py` | half ported, 51 checks — the ubercam half is a cinematics tool, see below |
 | `pyqt/` | ported, 60 checks — the window class had its event handling written and none of it connected |
 | `animation/` — `keyframes.py`, `baking.py`, `anim_curves.py`, `anim_layers.py` | ported, 93 checks — baking without rotation zeroed every static rotation |
+| `modeling/` — `vert_utils.py`, `surface.py`, `geometry.py`, `follicle.py`, `blendshape_model.py` | ported, 104 checks — the closest point on a surface was answered with a position, not a parameter |
+| `modeling/rivets.py`, `modeling/face_model.py`, `modeling/blendshape_node.py` | waiting on `rigging/` and `face/` |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -813,3 +815,68 @@ node by node, and stitching the copy back together — which is what most of `an
 
 **One caller to rewire when its module is ported.** `rigging/frag/animated_curves.py` calls
 `restore_from_anim_curves(..., start_time=...)`; the argument is `time_offset` now.
+
+## `modeling/` — vertices, surfaces, follicles and blend shape targets
+
+Five of the nine modules. The other four wait on packages that are not here yet: `rivets.py` and
+`face_model.py` need `rigging/` and `face/`, and `blendshape_node.py` needs `rigging/flags`. What
+is here is the part the face pipeline is built on — mirroring a mesh through a stored map, making
+a blend shape target out of a rigged mesh, and sticking things to surfaces.
+
+- **The closest point on a surface was answered with a position, not a parameter.**
+  `pm.nt.NurbsSurface.closestPoint` answers `(point, u, v)`, and the line reading it was
+  `uv, _, _ = surface_shape.closestPoint(...)` — so `uv` was the point, and the function handed
+  back the closest point's X and Y coordinates under the name of a UV parameter. Its one caller,
+  `rivets.attach_to_surface`, feeds those two numbers straight into a rivet's U and V, so every
+  rivet attached to a surface without an explicit UV has been placed by coordinates that have
+  nothing to do with the surface's parameterisation. Checked against a `closestPointOnSurface`
+  node in a real Maya: a point at x=3 on a surface 10 wide is u=0.8, and the old function said
+  0.0000000000000001. The default space was `preTransform` as well, while the caller measures its
+  position in world space, so a surface that had been moved was measured against its
+  untransformed self.
+- **Mirroring in world space read world coordinates and wrote local ones.** `mirror_vertex` asked
+  for the source position with `ws=world` and then set the target with a plain
+  `pm.xform(target, t=...)`, which is object space whatever `world` was; the middle-vertex loop in
+  `mirror_mesh` did the same to itself. Every world-space mirror moved vertices by the difference
+  between the mesh's transform and the origin — correct only for a mesh at the origin with no
+  rotation or scale, which is the one case anybody tested.
+- **A mirror map with whole numbers in it raised.** `mesh_name + '.vtx[' + inverse_index + ']'`
+  concatenates, and `json` gives a number back as an `int`. `mirror_mesh` also indexed the
+  right-hand list with the left-hand list's index with nothing checking they were the same length,
+  so a half-built map raised `IndexError` partway through and left the mesh half mirrored.
+- **The reference pin's shape name was executed as code.** `eval(f'pm.poly{obj_shape}()[0]')`,
+  where `obj_shape` comes out of a data file — a typo in the table was a `NameError` from inside
+  an `eval`, and anything else in that field ran. Two named shapes now, and a third answers a
+  warning. Setup data missing `region_rotations` or `ignore_types` crashed on the next line
+  (`.keys()` on `None`); `make_pins` left the namespace at the root rather than putting back the
+  one the caller was in; and the group it built to hold the pins was thrown away, so the caller
+  got nothing back when the pins were not merged.
+- **`create_follicle_constraint` could not work.** It called
+  `pm.parentConstraint(follicle_transform[0], node)`, and `follicle_transform` is already the
+  transform — indexing a PyNode indexes its *name*, so the first argument was the single character
+  `'f'`. Checked in a real Maya. No callers, and nor had its only entry point
+  `create_follicle_constraint_from_selection`; both gone, with `create_mesh_follicle`, whose only
+  caller was the broken one.
+- **`get_blendnode_shapes` walked the history to find the node it had already been given.**
+  `pm.ls(pm.listHistory(blendnode), type='blendShape')[0]` — `listHistory` puts the node itself
+  first, so on a blend node those three lines resolve to the argument, and on anything that is not
+  one, such as the mesh callers reasonably pass, they are an `IndexError`.
+- `set_blendshape_weights_from_mesh` and `set_blendshape_weights` were the same four lines twice
+  over, differing only in which end they started from; the first had no callers. Dropped with
+  `get_active_attribute`, `get_blendnode_index`, `convert_to_vertices` (which passed the built-in
+  `object` to `filterExpand`, and put `selectionMask` inside a `.format()` call rather than the
+  command, and was missing the dot before `cv` — three faults in nine lines),
+  `get_inverse_vertex_selection` (replaced the user's selection without putting it back) and
+  `fix_mesh_components_selection_visualization` and `apply_cube_trick`. None had callers.
+- `set_vertex_symmetry` and `set_blendshape_weight_symmetry` each said "on, unless the pose is not
+  on the centre, in which case off; and if symmetry is off, off" in a nested if/else. One line
+  each. `delete_blendshapes` ran `pm.delete` inside a list comprehension for its side effect.
+  `follicle.py` imported `naming` and never used it. Tabs for indentation, in three of the five.
+
+`pyqt` went back into `MCA_MAYA_PATHS` in the manifest with this piece — the original listed it,
+and it has been ported since; the manifest had not caught up.
+
+**One caller to rewire when its module is ported.** `modeling/rivets.py` calls
+`get_closest_parameter_on_surface` with a world position and no space; the default is `world` now,
+so it wants no change — but it has been placing rivets by the wrong numbers, and every rig that
+uses one should be looked at once `rivets.py` lands.

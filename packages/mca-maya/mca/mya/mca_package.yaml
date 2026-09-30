@@ -22,5 +22,6 @@ required: False
 environment:
   MCA_MAYA_BASE_PATH: '{self}'
   MCA_MAYA_PATHS:
+    - '{self}/pyqt'
     - '{self}/utils'
     - '{self}/modifiers'
