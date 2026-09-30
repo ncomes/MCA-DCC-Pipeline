@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**817 checks in 12 suites** so far.
+**874 checks in 13 suites** so far.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -37,6 +37,7 @@ any of this.
 | `utils/node_util.py`, `utils/ma_fileio.py`, `utils/textures.py` | ported, 68 checks — rebuilding a compound attribute always failed |
 | `utils/material_utils.py` | ported, 61 checks — three ways to crash the shader build |
 | `utils/scene_utils.py` | ported, 49 checks — backups went to a hard-coded `C:\export_backup` |
+| `animation/time_utils.py`, `utils/fbx_utils.py` | ported, 57 checks — a real FBX round trip; 506 lines to 289 |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -510,3 +511,37 @@ every artist's machine, with no plugin loaded.
   `utils/display_layers.py`, differently. They call those now.
 - `delete_unused_shader_nodes` drives a Hypershade menu item through MEL, which a batch Maya has
   not loaded — it says so and returns rather than raising.
+
+## `animation/time_utils.py`, `utils/fbx_utils.py`
+
+Maya has four different "the range" at once — the visible timeline, the scene's own range, the
+part a user dragged out, and whatever frames carry keys — and almost every bug in a baking or
+exporting tool comes from picking the wrong one. `get_times` asks for each in turn, most specific
+first, and now says in the log which one it settled on, because "it baked the wrong range" is
+otherwise very hard to account for after the fact.
+
+- **Importing `time_utils` loaded a plugin and a piece of Maya's interface.** Two lines at module
+  level: `from maya.plugin.timeSliderBookmark.timeSliderBookmark import createBookmark` and
+  `plugins.load_plugin('timeSliderBookmark')`. Anything that imported it — and the FBX exporter
+  does — paid for a plugin load, in a batch Maya as much as an interactive one.
+- **`set_timeline_range` could not be given frame 0.** `if not scene_start_time`, and `0` is
+  falsy, so a scene meant to start at zero got the visible range's start instead.
+- **`get_keyframe_range_from_nodes` answered "no keys" for a single node**, reading its keys only
+  `if isinstance(node_list, list)`.
+- **`import_fbx` raised a string.** `raise f'File not found at: {fbx_path}'` is `TypeError:
+  exceptions must derive from BaseException` — so the one case it checked for reported the wrong
+  thing and threw its own message away.
+- **The MEL builder rewrote the caller's own text.** Maya's FBX plugin has no Python interface, so
+  every call goes out as MEL, and `_FBXCmd` converted Python's `True`/`False` to MEL's by running
+  `str.replace` over the whole finished command — arguments included. Exporting a clip named
+  `TrueGrit` wrote `trueGrit` into the file. There is a check for exactly that.
+- **Ninety-odd one-line wrappers, three of them used.** Every command in the FBX plugin had a
+  function here whether the pipeline called it or not. Seventeen are called, one of those from
+  outside the module; the rest are reachable through `fbx_command`, which is the same mechanism
+  under a name that says so.
+- `load_fbx` and `assert_property` checked their results with `assert`, which Python removes
+  entirely under `-O`, and neither had a caller.
+
+The FBX half of the suite is a real round trip: a mesh and an animated transform written out
+through Maya's own plugin, read back into an empty scene, and checked for their positions, their
+keys and their namespace.
