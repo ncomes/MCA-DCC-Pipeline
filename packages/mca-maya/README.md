@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,600 checks in 23 suites** so far — 1,616 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,605 checks in 23 suites** so far — 1,621 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -64,7 +64,9 @@ any of this.
 | `rigging/matrix_nodes.py`, `rigging/ik_utils.py`, `rigging/space_switch_rig.py` | ported, 71 checks — building a space switch moved the control to its parent's origin |
 | `rigging/chain_markup.py`, `rigging/joint_utils.py`, `startup/configs/ma_consts.py` | ported, 100 checks — a joint could not be marked as not-exported |
 | `rigging/mesh_markup_rig.py` | ported, 51 checks — asking an untagged mesh anything raised; 510 lines to 396 |
-| `rigging/flags/flag_mirror.py`, `rigging/flags/frag_flag.py` | ported, 91 checks — every imported flag came back drawn twice |
+| `rigging/flags/flag_mirror.py`, `rigging/flags/frag_flag.py` | ported, 96 checks — every imported flag came back drawn twice |
+| `rigging/flags/serialize_flag.py` | **dropped** — it wrote `.flag` files nothing can read back; see below |
+| `rigging/flags/flag_utils.py`, `rigging/flags/flag_api.py` | waiting on `frag/` |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1094,3 +1096,68 @@ library measures which one a rig obeys.
 **Callers to rewire when their modules are ported.** `rig_utils.create_align_transform` is
 `groups.create_align_transform` — fourteen call sites, in `rfk_chain.py` (5),
 `rfk_stretch_chain.py` (5), `spline_ik_rig.py`, `rig_aim_joint.py`, and `rig_utils.py` itself.
+
+## `rigging/flags/serialize_flag.py` — dropped: it wrote files nothing could read
+
+There were two `.flag` writers in this package and they did not agree on the format. This is the
+one that goes.
+
+`frag_flag` writes YAML with the curve data under a `curve_data` key, and `frag_flag.swap_flags` —
+the only thing anywhere that reads an asset's `Flags` folder — reads YAML and looks under
+`curve_data`. `serialize_flag.export_flag` wrote **JSON**, with the curve data under a key called
+`flag`, alongside colour and matrix entries. JSON is valid YAML, so `swap_flags` reads such a file
+without complaint, finds no `curve_data`, gets an empty dictionary back, and leaves the control on
+its placeholder cube. Silently. Checked end to end in a real Maya, in `test_flags.py`: a file in
+that shape parses, has no `curve_data`, imports as `None`, and `swap_flags` reports that it swapped
+nothing.
+
+That matters because of who used which. The YAML writer is called from `rig_utils` and
+`buildarig_ui`. The JSON writer is called from `face_staging_ui.create_flags_from_common`, which
+populates an asset's `Flags` folder from the common face flags — so **every face asset whose flag
+shapes came through face staging has been getting placeholder cubes back on the next rig build**,
+and the folder full of `.flag` files sitting beside the rig looks like it is working.
+
+Rather than document that and keep both, the module goes, because nothing in it survives contact:
+
+- **Its only live entry point was `export_flag`**, with one caller in the shipping pipeline
+  (`face_staging_ui`) and one in `tools/_deprecated/flags_exporter`, which is not coming over.
+- **Everything it wrote that `frag_flag` does not — colour, `worldMatrix`, `matrix`, `space` — is
+  never read by anything.** Its own `deserialize_flag` reads only the CVs, knots, degree and form.
+  It was write-only data in a file nobody could open.
+- **It saved rotated shapes.** `export_flag` duplicated the control, sent it to the world, and did
+  `pm.move(dup, [0, 0, 0])` — translation only. The CVs were then read in world space, so the
+  control's orientation went into the saved shape. Flags are built aligned to joints, so almost
+  every flag is rotated. `frag_flag.export_flag` zeroes rotation, scale and `jointOrient` first,
+  which is what a shape library wants.
+- `normalize` was never passed by any caller; `space` never either. `FlagData`, the 200-line
+  reader/writer class around it, had no users at all — the two places that mention `FlagData` in
+  the pipeline are stale docstrings in `frag/face_edit_component.py` describing a differently named
+  class in that same file. Its `export_flag` also had a `finally` branch that deleted the
+  duplicate's *parent* — siblings and all — on a path that cannot be reached, and an
+  `if os.path.exists(flag_path): fileio.touch_path(flag_path)` that only created the file when the
+  file was already there.
+
+**One caller to rewire when its module is ported.** `tools/face_staging/face_staging_ui.py` line
+2610 calls `serialize_flag.export_flag(pm.PyNode(x), flag_path)`; it is
+`frag_flag.export_flag(x, os.path.join(flag_path, '<name>.flag'))` — note that `frag_flag` takes
+the file path, not the directory.
+
+## `rigging/flags/flag_utils.py`, `rigging/flags/flag_api.py` — waiting on `frag/`
+
+Both import `mca.mya.rigging.frag`, so they land with that package. What is already visible in
+them, recorded here so it is not re-discovered:
+
+- **"Remove animation" is broken whenever there is exactly one rig in the scene**, which is the
+  common case. `flag_api.check_for_rigs` returns the rig *itself* when there is one and a *list*
+  when there are several — its own docstring calls the return type inconsistent — and
+  `remove_animation` does `for rig in frag_rigs:`, which iterates a single `FRAGRig`.
+- **`select_all_flags` only ever leaves one rig's flags selected.** It calls `pm.select(...)` once
+  per rig inside the loop, with no `add=True`, so each rig replaces the last.
+- **`zero_flags` with an empty list zeroes every rig in the scene.** `if not node_list: node_list =
+  frag.get_frag_rigs()` — and `cut_all_flag_animations` hands it the rig's flags, so a rig with no
+  flags reaches that fallback and zeroes rigs the caller never mentioned.
+- The twelve-line "resolve these nodes to FRAG rigs" block is written out three times, twice
+  identically including its `logger.info('All nodes were FRAGRigs.')`, and the third copy quietly
+  leaves out the fast path the other two have.
+- `flag_utils` puts up a modal dialog (`dialogs.info_prompt`) from inside a function a headless
+  build calls.

@@ -5,6 +5,7 @@ Flags: mca.mya.rigging.flags.flag_mirror and frag_flag, in a real Maya.
 """
 
 # python imports
+import json
 import os
 import sys
 
@@ -252,6 +253,7 @@ def check_flag_forwarding(suite, pm):
 
 def check_flag_shapes(suite, pm):
     import maya.cmds as cmds
+    from mca.common.textio import yamlio
     from mca.mya.rigging.flags import frag_flag
 
     harness.new_scene()
@@ -310,6 +312,45 @@ def check_flag_shapes(suite, pm):
     suite.check('importing a file that is not there answers nothing',
                 frag_flag.import_flag(os.path.join(suite.temp, 'missing.flag')) is None)
     suite.check('and so does deserializing nothing', frag_flag.deserialize_flag({}) is None)
+
+    # -- the other writer: a .flag file nothing can read back ----------------------------------------- #
+    # serialize_flag.py wrote .flag files as JSON under a top-level 'flag' key, with colour and
+    # matrix entries alongside the curve. frag_flag.swap_flags - the only thing that reads an
+    # asset's Flags folder - reads YAML and looks under 'curve_data'. JSON parses as YAML, so the
+    # read succeeds and finds nothing, and the control silently keeps its placeholder. This is the
+    # shape that writer produced, built here from a real flag.
+    harness.new_scene()
+    joint_node = pm.joint(name='b_other_writer')
+    flag = frag_flag.Flag.create(joint_node, label='l_wrist')
+    shape_data = frag_flag.serialize_flag(flag.node)
+    other_writer_payload = {
+        'flag': {name: dict(entry,
+                            space='world',
+                            worldMatrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+                            matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+                 for name, entry in shape_data.items()},
+        'dcc': {'name': 'Maya', 'version': 2025, 'up_axis': 'y'},
+        'version': 1,
+    }
+    other_path = os.path.join(suite.temp, 'f_l_wrist.flag').replace('\\', '/')
+    with open(other_path, 'w') as other_file:
+        json.dump(other_writer_payload, other_file, indent=4)
+
+    suite.check('a file in the other writer\'s shape is still valid YAML, so reading it succeeds',
+                isinstance(yamlio.read_yaml_file(other_path), dict))
+    suite.check('but it has no curve_data in it - that writer called the key "flag"',
+                'curve_data' not in yamlio.read_yaml_file(other_path))
+    suite.check('so importing it answers nothing at all',
+                frag_flag.import_flag(other_path) is None)
+
+    harness.new_scene()
+    joint_node = pm.joint(name='b_other_swap')
+    flag = frag_flag.Flag.create(joint_node, label='l_wrist')
+    suite.check('and swap_flags leaves the control on its placeholder',
+                frag_flag.swap_flags([flag.node], suite.temp) == [])
+    suite.check('which is the shape the face pipeline has been losing',
+                len(flag.node.getShape().getCVs()) == 17)
+    os.remove(other_path)
 
     # -- swapping a rig's shapes in ------------------------------------------------------------------- #
     harness.new_scene()
