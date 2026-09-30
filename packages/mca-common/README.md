@@ -34,7 +34,11 @@ Each piece lands finished rather than copied and marked for later.
 | `tools/progressbar`, `tools/example_tool` | ported, 21 checks |
 | `tools/dcctracking`, `tools/python_editor` | **dropped** — see below |
 | `tools/` (doccrawler, toolbox, assetregister) | to do — 14,700 lines of UI |
-| `assetlist/`, `animlib/` | to do |
+| `assetlist/` (templates, categories, the base record) | ported, 61 checks |
+| `assetlist/` (unified entry and registry) | next |
+| `assetlist/` (asset manager, the flat API) | to do |
+| `assetlist/migrate_to_unified.py`, `migrate_asset_ids.py` | **dropped** — see below |
+| `animlib/` | to do |
 
 ## Logging
 
@@ -523,6 +527,63 @@ The version it replaces loaded its layout from `example_tool/ui/testui.ui` in th
 folder, which an open clone does not have — so the example nobody could run was the one meant
 to show how — and its button called `print`, in a framework with a logger.
 
+## The asset registry
+
+```python
+from mca.common.assetlist import asset_paths
+
+categories = asset_paths.AssetDictData.load()
+characters = categories.get_category_data('Characters')
+```
+
+The foundation first: the framework's own folder templates
+(`asset_path_templates.yaml` + `asset_path_config.py`), the project's category file
+(`asset_paths.py` reading and writing `asset_data.config`), and what every asset record has
+(`asset_list.py`).
+
+**It could not be used without Qt.** `asset_paths` began
+`from mca.common.pyqt import common_windows` and never used it — so reading the asset registry
+from a farm job, an MCP server, Unreal's Python or a test needed PySide to import first. One
+line.
+
+**It read the project's category file once per asset.** `AssetDictData.load()` parses the YAML,
+and `unified_entry` calls it while working out a single asset's folder — so building a registry
+of several hundred assets parsed the same file several hundred times. Read once now, with
+`asset_paths.reload()` for a change made elsewhere.
+
+**A folder was looked up by substring.** `get_required_path('RIGS_PATH')` walked the category's
+folder keys and answered the first one that *contained* what was asked for, in whatever order
+the file listed them — so it gave the right answer only because `RIGS_PATH` happens to be
+written above `SRC_RIGS_PATH`. Write the file the other way round and every rig in the project
+resolves into the source folder. It is an exact lookup now, with the substring match kept
+behind it for the tools that ask for `'MODELS'`, where it can no longer shadow a real key.
+
+**Every `add_faction`, `add_subcategory` and `add_skeleton` went round the back.** They read the
+list and called `.append` on the list the file holds, past the setter that sorts it — and on a
+category that had no such key at all they appended to a throwaway list, so what the artist added
+was silently lost.
+
+**The same file was described three times.** The templates YAML had a `categories:` block, a
+`gear_categories:` block and a `category_summary:` block, all describing the project's
+categories in different shapes. Only the last was read, and it was the stale one: `NPCs` where
+the others said `NPC`, `Handguns` where they said `Handgun`, `PickUps` missing altogether. It
+also declared a `Faces` category that the Python seeding code did not list, so **a fresh
+checkout came up with no Faces category** while every real project has one. One description now,
+and the seeding reads it.
+
+In the records (`asset_list.AssetBaseEntry`): an entry is stored as `{asset_id: fields}`, and
+every one of its thirty-odd properties re-derived the id by listing the dictionary's keys and
+taking the first — on every read of every attribute. `path` and `full_path` answered **None**
+out of properties documented to answer a string, so a caller joining onto one got a `TypeError`
+a long way from the asset with no path. `sm_path` and `sk_path` each had a setter that stored
+the value somewhere the getter never read, so setting one and reading it back gave the old
+value. `@abc.abstractmethod` was used on a class that is not an ABC, where it does nothing, so
+`AssetBaseEntry` could be built directly and `get_required_path` answered None — which every
+folder property then joined onto. And `create_folders` built its paths with a literal `'\\'`
+appended, called `fileio.touch_and_checkout` — Perforce, from a file helper — and used the
+folders' *relative* paths, so on any machine whose working directory was not the project root it
+made the asset's folders somewhere else entirely.
+
 ## What is not coming across
 
 `folders.py` held one function, `get_files`, which nothing in the framework imports — and its
@@ -530,6 +591,11 @@ two branches disagreed: the recursive one walked with `os.walk` and returned fil
 one filtered `os.listdir` and returned **directories too**, from a function called `get_files`.
 
 `project.py` was ten lines of section comments and no code.
+
+The two asset registry migrations, `migrate_to_unified.py` and `migrate_asset_ids.py`, are
+860 lines of one-off script for a conversion that has already been run: the registry on disk is
+the unified format. They stay in the depot's history, where a project still on the old format can
+find them.
 
 `tools/dcctracking` is not coming across, and would not have come across in any case:
 

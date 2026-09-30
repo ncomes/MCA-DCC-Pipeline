@@ -1,0 +1,67 @@
+# The shape of a project's asset folders, and the categories a new project starts with.
+#
+# This file ships with the framework and is read only. What a project actually has - its
+# categories, factions, subcategories and skeletons, as artists have edited them - lives in
+# `asset_data.config` under the project's Assetlist folder. This is what that file is seeded
+# from the first time a project is set up, and what a missing category is reconciled against.
+#
+# The version this replaces described the same things three times over, in three formats, and
+# the three disagreed: a `categories:` block with subcategories as a mapping, a
+# `gear_categories:` block, and a `category_summary:` with subcategories as a list. Only the
+# last was ever read - by the seeding code - and it was the one that had gone stale: it said
+# `NPCs` where the mapping said `NPC`, `Handguns` where the mapping said `Handgun`, and left
+# out `PickUps` entirely. It also declared a `Faces` category that the seeding code did not
+# list, so a fresh checkout came up without one, while every real project has Faces in it.
+#
+# One description of each thing now.
+
+version: '2.0'
+
+# What the folders inside an asset are called. Change one here and every path built from it
+# follows; the names are also exported as constants by `asset_paths`.
+folder_names:
+  source: '_Source'
+  rigs: 'Rigs'
+  models: 'Meshes'
+  animations: 'Animations'
+  textures: 'Textures'
+  flags: 'Flags'
+
+# The folders every asset has, and where they sit inside it. A category may override any of
+# these in its own block below. The keys are what `get_required_path` is asked for.
+default_paths:
+  required:
+    RIGS_PATH: 'Rigs'
+    MODELS_PATH: 'Meshes'
+    TEXTURES_PATH: 'Textures'
+    ANIMATIONS_PATH: 'Animations'
+    FLAGS_PATH: '_Source/Rigs/Flags'
+    SRC_RIGS_PATH: '_Source/Rigs'
+    SRC_MODELS_PATH: '_Source/Meshes'
+    SRC_ANIMATIONS_PATH: '_Source/Animations'
+  optional: {}
+
+# The categories a new project starts with. `subcategories` is a starting list, not a rule:
+# artists add to it through the register, and what they add lives in the project's own
+# `asset_data.config`. `is_gear` marks a category whose assets are worn or carried by
+# another asset, and whose paths start under `gear_root`.
+categories:
+  Characters:
+    subcategories: ['Heroes', 'NPCs', 'Enemies']
+  Heads:
+    subcategories: ['Heroes', 'NPCs', 'Enemies']
+  Faces:
+    subcategories: ['Decals']
+  Props:
+    subcategories: ['Collectables', 'Interactables', 'PickUps', 'Placeables', 'Projectiles']
+  Vehicles:
+    subcategories: ['Armoured']
+  Weapons:
+    subcategories: ['Handgun', 'Melee', 'Pistols', 'Rifles']
+  Environments:
+    subcategories: []
+  Cameras:
+    subcategories: ['Ubercam']
+  Outfits:
+    subcategories: ['Main', 'Civilian']
+    is_gear: true
