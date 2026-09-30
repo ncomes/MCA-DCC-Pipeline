@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,675 checks in 24 suites** so far — 1,691 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,736 checks in 25 suites** so far — 1,752 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -68,6 +68,7 @@ any of this.
 | `rigging/flags/serialize_flag.py` | **dropped** — it wrote `.flag` files nothing can read back; see below |
 | `rigging/flags/flag_utils.py`, `rigging/flags/flag_api.py` | waiting on `frag/` |
 | `rigging/cog_chain_rig.py`, `world_chain_rig.py`, `reverse_chain_rig.py`, `ikfk_switch.py`, `fk_chain.py`, `multi_constraint_rig.py` | ported, 70 checks — an FK chain built without align transforms raised |
+| `rigging/reverse_foot_rig.py`, `rigging/spline_ik_rig.py` | ported, 61 checks — a spline IK built in a namespace raised on its constraint weights |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1206,3 +1207,50 @@ builders; `rfk_chain`, `rfk_stretch_chain` and `rig_aim_joint` need `create_loca
 that it answers a lower-case axis letter where `rig_utils` answered an upper-case one, so a caller
 comparing against `'X'` wants changing; `spline_ik_rig` needed only `create_align_transform` and is
 unblocked. `reverse_foot_rig` needs nothing from `rig_utils` and is next.
+
+## `rigging/reverse_foot_rig.py`, `rigging/spline_ik_rig.py` — the two intricate ones
+
+A reverse foot is the pivots that let an animator roll a foot through a step: a foot does not rotate
+about the ankle when somebody walks, it rolls about the heel, then the ball, then the toe, and none
+of those is where the ankle joint is. So the pivots are built as a nest of duplicated contact joints
+— toe pivot, toe, ball pivot, exterior, interior, heel — with the ankle chain hanging off the
+bottom, and the attributes on the foot control wired one each to those rotations.
+
+A spline IK is Maya's solver plus the two things it does not give you: stretch, so the chain reaches
+its end control instead of sliding off the end of the curve, and a retract, so a tail can disappear
+into a body rather than bunching up at its base.
+
+- **A spline IK built inside a namespace raised on its own constraint weights.** The retract wires
+  the chain's orientation handover into a two-target constraint, and it addressed the two weights as
+  `'{name}W0'` and `'{name}W1'` built from `naming.get_basename` — which strips the namespace that
+  Maya's weight alias keeps. Referencing a rig into a scene and rebuilding it is exactly when the
+  names have namespaces on them. `getWeightAliasList` is asked now. This is the third place in the
+  package that built a weight alias by hand; `space_switch_rig` was the first.
+- **A foot with no contact joints, or the wrong number of them, built nothing and said nothing.**
+  Two early returns with a comment each. An animator gets a leg with no foot controls and no reason
+  why. Both now name what was wrong and what was expected.
+- **Building a reverse foot onto an existing foot control raised.** Seven attributes go on with
+  unguarded `addAttr` calls, and the control is passed in by the leg components — so a second pass
+  over the same leg was an error rather than a rebuild. Same for the spline IK's `retract`.
+- **`do_not_touch` held the spline IK's cluster twice** — it is built from a list that already
+  includes the cluster and then the cluster is appended again. Whatever a caller does to that list,
+  it did twice.
+- **`mid_flag` in the spline IK's result was set twice, once to the argument.**
+  `mid_flag_node if mid_flag else mid_flag` answers the boolean `False` when no mid control was
+  asked for rather than None, and the line below overwrote it when there was one.
+- **A degenerate curve divided by zero.** The stretch ratio is the curve's length now over its
+  length at build time, and nothing looked at the second number; every joint would have come out
+  scaled `nan`.
+- `reverse_foot_chain`'s `foot_joint, toe_joint, *_ = duplicate_chain(...)` raised `ValueError` on a
+  chain of one joint, and a spline chain of fewer than two joints walked into `ikHandle` and failed
+  there. `ik_toe_flag.alignTransform.get()` read the attribute rather than asking the flag, the same
+  mistake that made an FK chain without align transforms raise. The spline curve's world space was
+  read off the transform in one place and the shape in another; `mult_node.input1.input1X` reached a
+  compound's child through its parent; `sca = 1.0` is a named constant; and the magic numbers in the
+  retract — the u threshold of 6, the handover range of 3, the condition operation of 4 — are named
+  and said out loud, including the one nobody can explain from the code (`RETRACT_U_THRESHOLD`),
+  which is described by what it does rather than by a reason it does not give.
+- Both functions were one long block; the pivot hierarchy, the reverse chain, the foot attributes,
+  the stretch and the retract are each their own function now. The two reverse foot controls are
+  named inconsistently — the foot control takes the full side name and the toe control its first
+  letter, so `f_left_foot` sits beside `f_l_foot_toe_ik`. Left alone: rig data refers to these names.
