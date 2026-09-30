@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**985 checks in 15 suites** so far.
+**1,036 checks in 16 suites** so far. `utils/` is done, bar one deferred half.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -40,6 +40,7 @@ any of this.
 | `animation/time_utils.py`, `utils/fbx_utils.py` | ported, 57 checks — a real FBX round trip; 506 lines to 289 |
 | `utils/uvpin_utils.py` | ported, 56 checks — `is_pin_valid` always answered True |
 | `utils/events.py` | ported, 55 checks — 661 lines to 427; pausing any of thirteen events was a TypeError |
+| `utils/camera_utils.py` → `utils/playblast.py` | half ported, 51 checks — the ubercam half is a cinematics tool, see below |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -612,3 +613,48 @@ the crashes that came from it.
 The suite registers real callbacks in a real Maya, sets them off, pauses and resumes them, and
 leaves none behind — a callback left registered in a Maya the suite did not start is the crash this
 module exists to prevent.
+
+## `utils/camera_utils.py` → `utils/playblast.py`, and one half deferred
+
+`camera_utils` held two unrelated things. One was the playblast and still capture: a camera, a path
+and a resolution, needing nothing but Maya. The other was the "ubercam" — a cinematic camera rig
+built on `rigging.frag`, `rigging.templates`, `rigging.rig_utils`, `animation.baking` and
+`pyqt.dialogs`. That second half is not a utility at all; it is why a module in `utils/` sat at the
+bottom of a dependency chain five packages deep, and it cannot be ported before `rigging/frag`.
+
+The capture half is here as `utils/playblast.py`. The ubercam half comes over with `cinematics/`.
+**Two things in it must not be lost in the move**, so they are written down here:
+
+- `UBERCAM_MIRRORED_SHAPE_ATTRS` and the comment above it. The ubercam copies `focalLength`,
+  the film apertures, the lens squeeze and the clip planes from the first shot's camera as *values*,
+  once, with no DG connection — because (verified live, 2026-05-08) any connection on those
+  attributes that Maya 2025's cache evaluator does not understand — a choice node, an anim curve, a
+  clip-plane wire of any kind — crashes the renderer through shiboken6 the moment a shot camera is
+  moved under cached playback. If per-shot lens variation is ever needed, it has to be a
+  `timeChanged` script job setting the values imperatively, never a connection.
+- Five modules call the capture half through `camera_utils` and will need rewiring to `playblast`:
+  `cinematics/cine_file_utils.py`, `cinematics/shot_utils.py`, `tools/summoner/summoner_asset_tree.py`,
+  `tools/cineshoteditor/cine_shot_editor_tool.py`, and whatever else reaches
+  `create_center_capture`.
+
+What was wrong with the capture half:
+
+- **A frame range given as floats was silently thrown away.** `playblast_video` checked
+  `all(isinstance(x, int) for x in time_range)` before believing the range it was handed — and
+  `time_utils.get_times()`, the obvious thing to pass, answers *floats*, because that is what
+  `playbackOptions` answers. So a caller that asked for frames 1 to 24 got whatever `get_times` said
+  instead. `playblast_images` did the same to its frame list.
+- **`playblast_single_frame` could return a single character.** `playblast_images` answered a list of
+  paths for a folder and a bare string for a `.jpg` path; `playblast_single_frame` does `image =
+  playblast_images(...)` and then `image[0]`, which for the string case is its first letter.
+- **The step that clears the previous run's stills looked in the wrong folder.** `for x_file in
+  os.listdir(file_path): if os.path.isfile(x_file)` — `x_file` is a bare file name, so `isfile` asked
+  about it relative to the current working directory, which in Maya is its own `bin` folder. It never
+  found anything, so old stills were left behind and the multi-frame return then listed them along
+  with the new ones. There is a check that runs from a directory that is *not* the stills folder,
+  which is what makes it a real check.
+- `create_center_capture` moved the artist's `persp` camera to the origin to frame its subject and
+  left it there. It puts it back now.
+- A batch Maya has no viewport, so none of this can run there. Each function says so and answers
+  empty rather than raising, which is what a build step wants; and the suite checks that, since it is
+  all a batch Maya can check.
