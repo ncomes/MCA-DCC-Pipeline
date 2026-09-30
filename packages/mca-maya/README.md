@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**639 checks in 9 suites** so far.
+**707 checks in 10 suites** so far.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -34,6 +34,7 @@ any of this.
 | `utils/om/` | ported, 133 checks — every transform attribute serialized with `'type': None` |
 | `utils/attr_utils.py` | ported, 146 checks — an integer attribute could not be created at all |
 | `utils/groups.py` | ported, 30 checks |
+| `utils/node_util.py`, `utils/ma_fileio.py`, `utils/textures.py` | ported, 68 checks — rebuilding a compound attribute always failed |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -392,3 +393,58 @@ those are only compatible if something above it holds the offset.
 - **`transform_scale` divided by the numbers it was handed** without looking, so a scale of
   zero on any axis was a `ZeroDivisionError` from inside a rig build.
 - `create_aligned_child_group` had no docstring and no callers.
+
+## `utils/node_util.py` — rebuilding an attribute from data
+
+This is the other half of `attr_utils.serialize_attribute`: the part that takes the dictionary
+and makes the attribute again. `skel_utils` uses it to rebuild a skeleton's user attributes, so
+what it cannot rebuild is data that cannot come back.
+
+- **Rebuilding a compound attribute always failed.** `add_attribute` handed the job to
+  `attr_utils.add_compound_attribute`, and there is no such function — not in `attr_utils`, not
+  anywhere in the pipeline. `AttributeError`, every time. Any skeleton carrying a compound user
+  attribute could not be rebuilt. The compound is built here now, with its children added
+  before any of them is set up, because Maya does not finish making a compound until it has as
+  many children as it was promised: `hasAttr` answers False for every child but the last.
+- **A type of `0` was thrown away.** The type was read as `kwargs.pop('type') or
+  kwargs.pop('attrType') or kwargs.pop('attr_type')`, and `0` is falsy — so
+  `type=attributetypes.kMFnNumericBoolean`, which *is* `0`, fell through to `None` and Maya made
+  a double. Every boolean attribute rebuilt by number came back as a float.
+- **A minimum or maximum was never applied.** They were deliberately left out of the `addAttr`
+  call and set afterwards with pymel's `setMin` and `setMax` — and those do nothing at all on a
+  dynamic attribute: `setMin(0.0)` followed by `getMin()` answers `None`. The limits go in with
+  the attribute now.
+- **The default value was never set.** `set_attribute_info_from_dict`'s own code reads `if
+  default is not None: pass`, followed by eight commented-out lines. The docstring and the data
+  format both describe a `default` key; nothing was ever done with it.
+- **An enumeration's fields came back in a random order.** `enumName` was built with
+  `list(set(...))`, which has no order, so an attribute rebuilt from data had its choices
+  shuffled — and every index stored against it then meant something else.
+- **`is_empty`'s guard on Maya's own nodes could never fire.** `if node in default_nodes`
+  compares a PyNode against a list of strings, so `initialShadingGroup`, `defaultLightSet` and
+  the two configuration script nodes were not protected at all — and `scene_utils` uses this
+  function to decide what to delete during a scene clean-up.
+- Six functions had no callers: `match_translation`, `match_rotation`, `reset_transform`,
+  `rbf_retarget`, `center_obj` and `orient_obj_to_obj`, about two hundred lines. Dropping
+  `rbf_retarget` also takes this module's imports of `mca.mya.plugins.loader` and
+  `mca.mya.utils.material_utils` with it — and that second one is what made `node_util` and
+  `material_utils` import each other.
+
+## `utils/ma_fileio.py`, `utils/textures.py`
+
+- **One function named three different source control systems.** `touch_and_checkout_cmd`'s
+  docstring said "Attempts to check out the file in plastic", the menu entry calling it said
+  "SVN Check Out", and the icon beside that entry was `p4v.png`. The studio uses Perforce.
+  Source control is behind `mca.common.sourcecontrol` now, so there is one name for it and
+  nothing here has to know which one is in use.
+- **`remove_overlay_textures` could not find the overlays it had made** in any scene where the
+  meshes were in a namespace — which is every referenced or imported asset — because it searches
+  with `attr_utils.get_all_objects_with_attr`, and that was looking in namespaces that do not
+  exist. It also indexed the layered texture's input without checking there was one, so an
+  overlay whose original colour node had since been deleted raised `IndexError` part way
+  through and left every overlay after it in place.
+- **Taking an overlay off a shader with a plain colour lost the colour.** The overlay needs a
+  node to layer over, so a flat colour is turned into a checker with both colours the same; when
+  the overlay came off, that stand-in was deleted — and Maya leaves an attribute at its
+  *default* when the node driving it is deleted, not at the value it held before it was
+  connected. A shader that had been 0.2, 0.4, 0.6 came back mid-grey.
