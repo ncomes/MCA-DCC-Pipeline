@@ -28,8 +28,9 @@ Each piece lands finished rather than copied and marked for later.
 | `utils/` (lists, dicts, strings, methods, pyutils, timedate) | ported, 51 checks |
 | `utils/` (process, sounds, video) | ported, 41 checks |
 | `utils/folders.py`, `project.py`, `prefvars.py` | **dropped** — see below |
-| `utils/pymaths.py` | next |
-| source control (`p4v`, `plasticscm`) | to do — behind one interface |
+| `utils/pymaths.py` | ported, 38 checks — half of it dropped |
+| `utils/plastic.py` | to do — with the source-control interface |
+| source control (`p4v`, `plasticscm`, `utils/plastic.py`) | next — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
 
@@ -356,6 +357,70 @@ file first, and asks Windows not to flash a console window up in front of Maya.
 
 ffmpeg itself is not bundled — it is GPL — and is found from `MCA_FFMPEG_EXE`, then a
 project copy, then `PATH`.
+
+## Arithmetic
+
+```python
+from mca.common.utils import pymaths
+
+pymaths.is_equal(rotation, 1.0, 0.001)
+pymaths.get_planar_up(shoulder, elbow, wrist)
+```
+
+A leaf: standard library only, so a DCC, a farm job and the suite get the same answers.
+695 lines became 300, and three of the things it did were wrong.
+
+**`is_equal`'s tolerance did nothing.** It read
+`fabs(x - y) < epsilon * fabs(x + y) * tolerance or fabs(x - y) < epsilon`, which multiplies
+the caller's tolerance into an epsilon-sized number: with `tolerance=2`, two values still had
+to be within 4.4e-16 of each other. Every call site in the framework passes a tolerance, and
+every one of them has been getting exact equality — including `ma_maths`, which asks
+`is_equal(sin_half_theta, 0.0, 2)` while decomposing a matrix, so its gimbal-lock branch has
+never once been taken. It is `math.isclose` now, with the tolerance as an absolute distance;
+the three `ma_maths` call sites pass `2`, which was never a distance in any reading, and need
+a number chosen when that module is ported.
+
+**A small vector measured as nothing.** `get_vector_length` rounded the *sum of the squares*
+to five decimal places before taking the square root, so any vector shorter than about 0.0022
+units came back as exactly zero — and `normalize_vector` then divided by that zero. Face rigs
+work at that scale. Nothing rounds any more: the old module rounded every vector it produced
+to five places, which reads as tidiness and is a display concern.
+
+**`create_random_list(int_only=True)` had never run**: it called
+`random.randint([low, high])`, one list where two numbers go, so it raised `TypeError` every
+time.
+
+Also: `add_vectors` and friends used `zip`, so adding a 3d point to a 2d one answered a 2d
+point and said nothing — they refuse now; `get_cross_product` ran modulo arithmetic over
+whatever length it was given and answered confident nonsense for anything but 3d;
+`average_vectors([])` raised `IndexError` on its first line; `remap_value` raised
+`ZeroDivisionError` on an empty input range.
+
+`get_midpoint_between_points` measured its `scale` from the **second** point back towards the
+first, which its docstring did not mention because the parameter was not documented at all. It
+counts from the first point now. At the default 0.5 the two agree, so the only caller affected
+is `skel_utils.position_twist_joints`, which must swap its two points when it is ported.
+
+Two names to fix at their call sites, not here: `buildarig` calls
+`pymaths.find_distance_between_points` twice, a function that has never existed under that
+name — so working out a rig's scale from its skeleton's bounding box has always raised
+`AttributeError`.
+
+### What was dropped
+
+Four `fade_*` and ten `ease_*` functions, copied from a C easing cheat sheet and used by
+nothing. One of them shows why they were not worth keeping: `ease_out_back` reads
+`1 + (--percent_value) * ...`, and `--x` in Python is not a pre-decrement, it is minus minus
+x, which is x. `fade_sigmoid` jumps from 0 to 0.168 the moment its input leaves zero. Qt has
+easing curves for anything that needs to animate.
+
+`smooth_step` normalised with `value / range_val` and never subtracted `range_start`, so any
+range not starting at zero was wrong. `distribute_value` answered two values when asked for
+one. `average_position` was `get_midpoint_between_points` with the arguments spelled
+differently. `get_pole_vector_pos` is a second implementation of `ik_utils.get_pole_vector_position`,
+which is the one the rigging code calls. `inverse_distance_weight_1d`, `snap_value`,
+`roundup`, `get_range_percentage`, `map_range_clamped`, `map_range_unclamped`, `AXIS`, `PI` and
+`MAX_INT`: no callers.
 
 ## What is not coming across
 
