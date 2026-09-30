@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,790 checks in 26 suites** so far — 1,806 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,876 checks in 27 suites** so far — 1,892 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -70,6 +70,7 @@ any of this.
 | `rigging/cog_chain_rig.py`, `world_chain_rig.py`, `reverse_chain_rig.py`, `ikfk_switch.py`, `fk_chain.py`, `multi_constraint_rig.py` | ported, 70 checks — an FK chain built without align transforms raised |
 | `rigging/reverse_foot_rig.py`, `rigging/spline_ik_rig.py` | ported, 61 checks — a spline IK built in a namespace raised on its constraint weights |
 | `utils/locators.py` (new), `rigging/ribbon_setup.py`, `rig_aim_joint.py`, `twist_setup.py` | ported, 54 checks — the locator builders moved out of `rig_utils` |
+| `rigging/rfk_chain.py`, `rigging/rfk_stretch_chain.py` | ported, 86 checks — a stretch chain too short to stretch divided by zero |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1097,8 +1098,8 @@ rigging question that names cannot answer, so the module names the two conventio
 library measures which one a rig obeys.
 
 **Callers to rewire when their modules are ported.** `rig_utils.create_align_transform` is
-`groups.create_align_transform` — fourteen call sites, in `rfk_chain.py` (5),
-`rfk_stretch_chain.py` (5), `spline_ik_rig.py`, `rig_aim_joint.py`, and `rig_utils.py` itself.
+`groups.create_align_transform` — fourteen call sites, of which only `rig_utils.py`'s own are left;
+`rfk_chain.py` (5), `rfk_stretch_chain.py` (5), `spline_ik_rig.py` and `rig_aim_joint.py` are done.
 
 ## `rigging/flags/serialize_flag.py` — dropped: it wrote files nothing could read
 
@@ -1203,7 +1204,7 @@ FK chain, the IK/FK switch and the matrix multi-constraint.
   a scale of 0.85, an orientation of -90 — are named.
 
 **Still waiting on `rig_utils`.** `ik_chain` needs `create_line_between` and the two locator
-builders; `rfk_chain`, `rfk_stretch_chain` and `rig_aim_joint` need `create_locator_at_object`;
+builders; `rfk_chain`, `rfk_stretch_chain` and `rig_aim_joint` needed `create_locator_at_object`;
 `ribbon_setup` and `twist_setup` need `find_primary_axis`, which is `dag.get_primary_axis` — note
 that it answers a lower-case axis letter where `rig_utils` answered an upper-case one, so a caller
 comparing against `'X'` wants changing; `spline_ik_rig` needed only `create_align_transform` and is
@@ -1299,7 +1300,61 @@ longer pulls 1,752 lines of rig building in behind it. The three modules that ne
   named in — is written down. `quick_build_twist_setup` has no callers and is kept: it is the only
   place that shows how `ChainMarkup.twist_joints` is meant to be walked.
 
-**What is left of `rig_utils`' hold on `rigging/`.** `rfk_chain`, `rfk_stretch_chain` and `ik_chain`
-still import it — the first two only for the locator builder and the align transform, which are both
-moved, so they are unblocked; `ik_chain` also wants `create_line_between`, which needs
-`deformations/cluster.py`.
+**What is left of `rig_utils`' hold on `rigging/`.** `ik_chain` is the last module in `rigging/`
+that still imports it, and the only thing it wants which has not moved is `create_line_between` —
+which needs `deformations/cluster.py`.
+
+## `rigging/rfk_chain.py`, `rigging/rfk_stretch_chain.py` — one chain and its stretching variant
+
+A reverse FK chain gives a spine two controls instead of six: one at each end, and every joint
+between them works its own rotation out from the two. The interesting part is that the blending is
+done with *positions* rather than with a blended orientation constraint — each end control pushes a
+pair of locators out along its own X and Y, a point constraint averages each pair by weight, and the
+middle joint aims at the averaged X with the averaged Y as its up vector. Two orientations far apart
+blend the long way round; two points cannot. The weight is a smoothstep of how far along the chain
+the joint sits, worked out at build time.
+
+`rfk_stretch_chain` is the same chain with a length on top: one free translate axis on the end
+control, a node network turning it into a length factor and a volume-preserving cross-section scale,
+and a no-stretch twin of the chain for the end control's align group to follow so that the
+animator's translate is never downstream of what it drives. The two modules had the same ~150 lines
+in them twice, differing in one line; the four builders in `rfk_chain` are public now and
+`rfk_stretch_chain` calls them, passing the one node that differs as an argument.
+
+- **A stretch chain too short to stretch divided by zero.** A chain of one joint has a rest length
+  of nought, which went straight into the `multiplyDivide` that turns the control's offset into a
+  length factor, and put both end controls on the same joint. A chain of two built a reverse FK
+  chain with nothing in the middle to distribute to. Neither said anything. A chain whose joints all
+  sit in the same place divides by zero the same way at any length, and is caught now too.
+- **Both docstrings said the twist bias attributes were keyable and exposed to the animator.** They
+  are added keyable and then set `keyable=False, cb=False` on the very next line, and nothing
+  anywhere reads or drives them afterwards — they are the build-time weights. They go on
+  non-keyable, and what they are for is written down.
+- **The chain was walked without a node type**, so anything in it that is not a joint would be
+  counted as a middle joint and given a control. Every other caller of `get_between_nodes` in the
+  package asks for joints.
+- **Renaming the sub controls threw away their wrappers.**
+  `sub_end_flag = pm.rename(sub_end_flag, str(sub_end_flag) + '_sub')` rebinds the name to the
+  PyNode `pm.rename` answers, so what came back in `sub_flags` was a bare node where every other
+  control in the result is a `Flag`. The node is renamed through the wrapper now.
+- **`rfk_stretch_chain`'s docstring said the end control "gets a single unlocked translate axis".**
+  Nothing in the module locks anything: all three axes come out free, and moving the control on
+  either of the other two slides it off the chain and does nothing at all. `RFKStretchComponent` is
+  what locks them, from the `stretch_axis` the builder returns. That is written down accurately now,
+  rather than reading as something the module does.
+- The label — strip the suffix, strip the namespace — was written out six times in each module, and
+  a caller passing `suffix=''` would have had every underscore stripped out of every label, the same
+  fault `reverse_chain` had. The five units the aim locators are pushed out by, the 0.75 the subs are
+  drawn at and the three `multiplyDivide` operation numbers were in the arithmetic. `getParent()`
+  stood in for the control's align transform in both, which is only the same node while nothing has
+  been reparented.
+
+**The one thing in here that had to be checked rather than read.** `rfk_stretch_chain` builds an
+`end_orient_proxy` — an empty carrying the end control's rotation — and has the middle joints' aim
+systems read that instead of the control itself, with a comment saying that reading the control
+closes an evaluation cycle. That is not something reading the code can settle, so the suite settles
+it: it builds the rig once as written and asks Maya for a cycle check, which comes back clean, and
+then builds it again with the proxy replaced by the control and asks again, which comes back with a
+cycle. The reason the proxy works is worth knowing if anyone touches this: the align group it copies
+its orientation from is only ever *point* constrained, so its orientation can never drift from the
+one the proxy's group was built with.
