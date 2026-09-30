@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,876 checks in 27 suites** so far — 1,892 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,946 checks in 28 suites** so far — 1,962 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -71,6 +71,7 @@ any of this.
 | `rigging/reverse_foot_rig.py`, `rigging/spline_ik_rig.py` | ported, 61 checks — a spline IK built in a namespace raised on its constraint weights |
 | `utils/locators.py` (new), `rigging/ribbon_setup.py`, `rig_aim_joint.py`, `twist_setup.py` | ported, 54 checks — the locator builders moved out of `rig_utils` |
 | `rigging/rfk_chain.py`, `rigging/rfk_stretch_chain.py` | ported, 86 checks — a stretch chain too short to stretch divided by zero |
+| `deformations/cluster.py`, `rigging/reference_line.py` (new), `rigging/ik_chain.py` | ported, 70 checks — a cluster built inside a namespace raised `TypeError` |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -298,9 +299,10 @@ A note for when the callers are ported: `namespace.get_namespace` no longer take
 - `get_ordered_hierarchy` and `get_children_in_order` were two functions for one question,
   with different argument names and different answers about the root; nothing called the
   first. `create_line_between` was a second copy of `rig_utils.create_line_between`, and the
-  three callers all use that one — dropping it takes this module's import of
+  three callers all used that one — dropping it takes this module's import of
   `mca.mya.deformations.cluster` with it, which is what made a leaf utility depend on the
-  deformation code.
+  deformation code. The surviving copy is `rigging/reference_line.py` now, for the same reason:
+  it is built out of clusters, so it is not a leaf utility.
 
 `set_node_color` is kept even though nothing calls it: `frag_rig` and four other modules set
 `overrideEnabled` and the colour attributes by hand, and should be rewired to it when they are
@@ -1300,9 +1302,10 @@ longer pulls 1,752 lines of rig building in behind it. The three modules that ne
   named in — is written down. `quick_build_twist_setup` has no callers and is kept: it is the only
   place that shows how `ChainMarkup.twist_joints` is meant to be walked.
 
-**What is left of `rig_utils`' hold on `rigging/`.** `ik_chain` is the last module in `rigging/`
-that still imports it, and the only thing it wants which has not moved is `create_line_between` —
-which needs `deformations/cluster.py`.
+**What is left of `rig_utils`' hold on `rigging/`.** Nothing. `ik_chain` was the last module in
+`rigging/` importing it, and `create_line_between` — the one thing it wanted that had not moved — is
+`rigging/reference_line.py`. What is left in `rig_utils` is only used by `rig_utils` itself and by
+the parts of the package that have not been ported.
 
 ## `rigging/rfk_chain.py`, `rigging/rfk_stretch_chain.py` — one chain and its stretching variant
 
@@ -1358,3 +1361,59 @@ then builds it again with the proxy replaced by the control and asks again, whic
 cycle. The reason the proxy works is worth knowing if anyone touches this: the align group it copies
 its orientation from is only ever *point* constrained, so its orientation can never drift from the
 one the proxy's group was built with.
+
+## `deformations/cluster.py`, `rigging/reference_line.py`, `rigging/ik_chain.py`
+
+A rotate-plane IK chain is the arm-and-leg workhorse: an IK handle sitting in an align group so the
+rig can move the whole thing without a constraint fighting the solver, a control that places the end
+of it, a smaller detail control under that which turns the end joint, and a pole vector control with
+a template line drawn from the middle joint to it so an animator can see which joint it steers.
+
+The line is two clusters on a two-point curve, which is why `deformations/cluster.py` came over with
+it, and why the line is `rigging/reference_line.py` rather than a utility: a leaf utility that
+reaches into the deformation code is exactly what `utils/dag.py` was cleaned of.
+
+- **A cluster built with a namespace active raised `TypeError`.** Clusters are deliberately built in
+  the root namespace and renamed into the caller's afterwards, but the rename was written
+  `pm.rename('{0}{1}'.format(current_namespace, cluster))` — one argument, where `pm.rename` wants
+  the node and its new name. In pymel that raises `TypeError: rename() missing 1 required positional
+  argument: 'newname'`. So every cluster built inside a namespace raised, which means the IK chain's
+  pole vector guide line raised, which means a referenced rig could not be rebuilt. That is the
+  third place in this package where something broke only inside a namespace, alongside the spline
+  IK's constraint weights and `frag_flag`'s. And the name it was building was wrong anyway:
+  `namespaceInfo(absoluteName=True)` answers `:hero` with no trailing colon, so the two joined into
+  `:heroin_namespace` rather than `:hero:in_namespace`.
+- **A cluster asked for over no points was built anyway, deforming nothing.** `pm.cluster([])` does
+  not refuse — it makes a cluster node and a handle connected to no geometry at all and says nothing.
+  A guide line built that way would never follow either of its ends.
+- **The pole vector control was wired to a locator that is deleted four lines later.** Where the pole
+  vector goes has to be worked out before the IK handle exists, because building a handle moves the
+  joints onto the solver's plane, so a temporary locator is put there for the control to be built on.
+  But `Flag.create` wires a control to whatever it was built on, both ways — so every IK chain ever
+  built came out with a pole vector control whose `driven_transform` attribute points at nothing.
+  Same fault as `rig_aim_joint`, same fix: it asks not to be wired.
+- **`end_joint` was quietly assigned over.** On a four-joint chain the IK solves over the first
+  three and the fourth is left outside it, which is right — but it was done by rebinding the
+  argument, so the `end_joint` the caller got back was not the joint they passed in and nothing said
+  so. The IK's own end joint has its own name and its own key now.
+- **The error for a chain of the wrong length named neither the joints nor the count** and said
+  "end_joints"; an unrecognised rotate order raised a bare `KeyError`, part-way through the build,
+  from a dictionary rebuilt inside the function on every call. Both now name what they were given,
+  and the rotate order is checked before anything is created.
+- The align group for the IK handle was built by hand — group, snap, reparent — under exactly the
+  name `groups.create_align_transform` gives it, so the handle carries the same align markup every
+  other aligned node in a rig does now. Finding the guide line's two clusters was ten lines of
+  walking shape connections in each caller; that is `reference_line.get_line_clusters`. The line's
+  `inheritsTransform` was switched off a second time after a call that had already done it. The
+  0.75 the offset control is drawn at, the template display type and the grey colour index were
+  numbers in the arithmetic, and the result dictionary was built a line at a time.
+
+**Kept, with the reason written down.** Building the cluster in the root namespace is a workaround
+for a Maya 2019 bug — `pm.cluster` raising `RuntimeError: Problems occurred with dependency graph
+setup` when a namespace is active. Maya 2025 does not need it; a cluster built inside a namespace
+comes out correctly named. The oldest Maya the pipeline supports is 2022, which has not been
+checked, so the detour stays until it has been, and the comment says as much. Likewise the locator
+the rotate-order change is measured onto: a control built by `Flag.create` has its rotation in
+`jointOrient` and zeroes in `rotate`, where the rotate order makes no difference at all, so the
+measurement is a no-op today — but that is a property of how the control was built rather than
+something the function can rely on.
