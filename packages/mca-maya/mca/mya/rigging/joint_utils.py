@@ -130,6 +130,11 @@ def create_skeleton_dict(root_joint):
     The root is filed under :data:`ROOT_KEY` whatever it is called, because two skeletons being
     mapped onto each other almost never agree about their roots' names.
 
+    Two joints in one skeleton with the same name - which happens with a duplicated hierarchy, or
+    with two namespaces - can only be one entry, and the last one walked is the one that gets it.
+    That is worth saying out loud rather than leaving for the caller to notice; ``skel_utils`` held
+    a second copy of this function that said it and a third that did not, and this is the one left.
+
     :param pm.nt.Joint root_joint: The skeleton's root.
     :return: ``{joint name without its namespace: joint}``.
     :rtype: dict
@@ -137,7 +142,12 @@ def create_skeleton_dict(root_joint):
 
     skel_dict = {ROOT_KEY: root_joint}
     for joint_node in (pm.listRelatives(root_joint, allDescendents=True, type=pm.nt.Joint) or []):
-        skel_dict[naming.get_basename(joint_node)] = joint_node
+        joint_name = naming.get_basename(joint_node)
+        if joint_name in skel_dict:
+            logger.warning('There is more than one %s in this skeleton, so %s is not in this '
+                           'lookup at all - %s is what that name answers.',
+                           joint_name, skel_dict[joint_name], joint_node)
+        skel_dict[joint_name] = joint_node
     return skel_dict
 
 

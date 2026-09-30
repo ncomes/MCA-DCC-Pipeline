@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,946 checks in 28 suites** so far — 1,962 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**2,013 checks in 29 suites** so far — 2,029 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -72,6 +72,7 @@ any of this.
 | `utils/locators.py` (new), `rigging/ribbon_setup.py`, `rig_aim_joint.py`, `twist_setup.py` | ported, 54 checks — the locator builders moved out of `rig_utils` |
 | `rigging/rfk_chain.py`, `rigging/rfk_stretch_chain.py` | ported, 86 checks — a stretch chain too short to stretch divided by zero |
 | `deformations/cluster.py`, `rigging/reference_line.py` (new), `rigging/ik_chain.py` | ported, 70 checks — a cluster built inside a namespace raised `TypeError` |
+| `rigging/skel_utils.py` | ported, 67 checks — exporting over a read-only file failed, and restoring markup cleared every weight lock |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1417,3 +1418,66 @@ the rotate-order change is measured onto: a control built by `Flag.create` has i
 `jointOrient` and zeroes in `rotate`, where the rotate order makes no difference at all, so the
 measurement is a no-op today — but that is a property of how the control was built rather than
 something the function can rely on.
+
+## `rigging/skel_utils.py` — writing a skeleton down, and building one back
+
+A `.skl` file is JSON: one entry per joint, keyed by the joint's name, holding its world matrix, its
+parent's name, whether it draws its label, and every user attribute on it — which is where the side
+and region markup lives. That is enough to do the four things this module is for: rebuild a skeleton
+somewhere else, merge one skeleton into another, put a posed skeleton back into its bind pose, and
+put markup back onto a skeleton that has lost it.
+
+- **Exporting over a read-only file failed.** Every `.skl` in this pipeline comes out of Perforce
+  read-only until it is checked out, which is exactly what `fileio.touch_path` is for — but it was
+  called with the path *without* its extension, so it made sure the folder existed and never touched
+  the file that was about to be written.
+- **Restoring markup deleted every user attribute on every joint, Maya's own included.** A bound
+  joint carries `lockInfluenceWeights`, which is a user attribute and is where an artist's per-joint
+  weight locks live. It was carefully left out of what gets written down and then deleted here, so
+  putting a skeleton's markup back silently cleared every weight lock in the skeleton. Anything else
+  another tool had put on a joint went the same way, connections and all — the purge did not look.
+- **A skeleton whose root is not called `root` lost its root's markup and its root's bind pose.**
+  Both readers looked the root's entry up under the literal key `'root'`, while the writer keys every
+  joint, root included, by its own name. So a prop or a face skeleton rooted anywhere else got a
+  warning and a skipped root. The entry is found by name now, falling back to the entry with no
+  parent — which is the root by construction whatever it is called, and which also covers the case
+  the literal lookup was there for: a duplicated hierarchy whose root Maya has put a number on.
+- **The joint radius scale was the sum of the bounding box's maximum corner**, so it depended on
+  where in the world the skeleton was standing rather than on how big it was. The same skeleton a
+  thousand units along X came out with radii eight times bigger; one standing below the origin came
+  out with a **negative** radius, which draws nothing at all. It is the longest side of the bounding
+  box now, which is what the comment beside it always claimed. **And it never set the root joint's
+  radius**, because `listRelatives(allDescendents=True)` leaves the node it starts from out.
+- **Importing a skeleton renamed whatever else in the scene shared a joint's name.** A joint has to
+  end up under the name it was written down as, because every other entry's `parent_node` refers to
+  it by that name — so a clash does have to move. But it moved silently, and it could be anything: a
+  mesh, a control, a locator. It says which node it moved and where it went now. The joint was also
+  created directly under its final name, and Maya does not uniquify by adding a 1: `b_spine_01` taken
+  gives **`b_spine_02`**, which is very likely the next joint in the same file, and the two then
+  fight over that name. It is created unnamed and renamed.
+- **A file in which every entry names a parent inside the file describes a loop, not a skeleton** —
+  and it built all the joints first, then raised `Cannot parent an object to one of its children` out
+  of the middle of the parenting, leaving them in the scene. The roots are worked out from the data
+  before anything is created now, and a file naming a parent it does not contain is reported rather
+  than raising `KeyError`.
+- **`.skl` paths were trimmed with `path.replace('.skl', '')`**, five times over, which strikes
+  anywhere in a path and not only the end: a file under a folder called `.skl_backups` came out
+  somewhere else entirely. All five were unnecessary — `strings.append_extension` adds the extension
+  only when it is not already there.
+- **`import_skeleton` answered a `(None, [])` tuple when the file was missing**, and then handed it
+  straight to `scale_skel_radi`, which handed it to `pm.xform` as a node.
+- **`position_twist_joints` reversed the list it was given, in place**, so every joint was placed at
+  the opposite end of the segment from where its own docstring says it goes. The docstring is the
+  only statement of intent either way — its one caller passes a raw selection — so the reverse went
+  and the docstring stands: first in the list, nearest the parent. It does not touch the caller's
+  list any more either.
+- **`create_skeleton_dict` was a second copy of `joint_utils.create_skeleton_dict`, and
+  `get_skel_dict` a third.** The three differed only in whether they mentioned that two joints with
+  one name can only be one entry in the lookup. That warning is on the surviving one now; the other
+  two are gone, and `get_skel_dict` had no callers at all.
+- `SkeletonData` carried `DATA_TYPE`, `NICE_NAME`, `PRIORITY`, `can_represent`, `icon` and
+  `functionality` for a data-part registry that no longer exists, and reached its own methods through
+  `self.functionality()['read_data']()`. `export_data` wrote the joints under a `joints` key with the
+  Maya version beside them — a format no reader in the pipeline understands — and nothing called it,
+  which is the same test `serialize_flag` was dropped by. What is left is a path and two methods, and
+  dropping `icon` takes this module's dependency on `mca.common.resources` with it.
