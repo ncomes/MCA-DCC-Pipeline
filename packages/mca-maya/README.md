@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,500 checks in 22 suites** so far — 1,516 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,600 checks in 23 suites** so far — 1,616 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -49,7 +49,7 @@ any of this.
 | `utils/dag.py` | ported, 58 checks — one function looped forever, another raised on any node with a shape |
 | `utils/om/` | ported, 133 checks — every transform attribute serialized with `'type': None` |
 | `utils/attr_utils.py` | ported, 146 checks — an integer attribute could not be created at all |
-| `utils/groups.py` | ported, 30 checks |
+| `utils/groups.py` | ported, 39 checks — `create_align_transform` moved here out of `rig_utils` |
 | `utils/node_util.py`, `utils/ma_fileio.py`, `utils/textures.py` | ported, 68 checks — rebuilding a compound attribute always failed |
 | `utils/material_utils.py` | ported, 61 checks — three ways to crash the shader build |
 | `utils/scene_utils.py` | ported, 49 checks — backups went to a hard-coded `C:\export_backup` |
@@ -64,6 +64,7 @@ any of this.
 | `rigging/matrix_nodes.py`, `rigging/ik_utils.py`, `rigging/space_switch_rig.py` | ported, 71 checks — building a space switch moved the control to its parent's origin |
 | `rigging/chain_markup.py`, `rigging/joint_utils.py`, `startup/configs/ma_consts.py` | ported, 100 checks — a joint could not be marked as not-exported |
 | `rigging/mesh_markup_rig.py` | ported, 51 checks — asking an untagged mesh anything raised; 510 lines to 396 |
+| `rigging/flags/flag_mirror.py`, `rigging/flags/frag_flag.py` | ported, 91 checks — every imported flag came back drawn twice |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1034,3 +1035,62 @@ what it was made from.
 
 **One caller to rewire when its module is ported.** `face/face_utils/face_build_utils.py` calls
 `get_blendshape_region_dict()`; it is `get_region_dict(category=BLENDSHAPE_CATEGORY)`.
+
+## `rigging/flags/` — the controls an animator selects
+
+A flag is a joint drawn as nothing, carrying a NURBS curve shape and a handful of marker
+attributes. A joint rather than a transform because a joint has a `jointOrient`, which is where a
+control's build-time orientation can go without spending its rotate channels. The shape is not part
+of the rig build: a rig is built with a placeholder cube on every control, and `swap_flags` then
+replaces those from per-rig `.flag` files, which is how a rigger reshapes a control without
+rebuilding anything.
+
+- **Every flag imported from a `.flag` file came back drawn twice.** `deserialize_flag` builds the
+  transform from the first shape's data — and then builds a *second* curve from that same data and
+  parents its shape in alongside. For a one-shape flag, which is almost all of them, the result is
+  two identical overlapping curves. Checked in a real Maya: two shapes on the rebuilt transform.
+  `swap_flags` then moves both onto the rig's control, so every rig built with custom flag shapes
+  has been carrying doubled curves on every control — twice the geometry to draw, and templating or
+  hiding one of them leaves the other behind.
+- **Re-orienting a flag's align transform reached into the artist's selection.** `Flag.create`
+  builds its joint at the top of the scene, so the align group above it has no parent — and the
+  `orientation` branch then called `pm.parent(None, world=True)`, twice. `pm.parent` given `None`
+  falls back to whatever is selected, so that un-parented the current selection to the world; with
+  nothing selected it raised `TypeError: Error retrieving default arguments`. Both checked in a real
+  Maya. The branch only ever looked correct because its last line put the flag back under its align
+  group.
+- **Building a flag changed what the artist had selected** — `pm.select(cl=True)` to make the joint,
+  and then `pm.curve`, `pm.parent` and `makeIdentity` each leaving their own node selected. A flag
+  build ended with the new flag selected and whatever the artist had chosen gone. The whole of
+  `Flag.create` runs inside the maintained-selection context now, which is also what stops the
+  `orientation` branch from having anything to reach into.
+- **`hide_align_transform` raised on a flag built without an align transform** —
+  `get_align_transform` answers None for one, and the next line was `align.v.set(0)`.
+- **`export_flag` gave up silently**, twice: once when the node's first shape is not a curve, once
+  when there was nothing to serialize. A rigger exporting the wrong selection got no file and no
+  reason.
+- **The homogeneous-coordinate conversion never ran.** A comment says `getCVs()` returns 4D points
+  and the code divides each by its `w`. It returns three components — checked in a real Maya — so
+  the branch was dead. It is kept, because a `.flag` file written by something that *did* store four
+  is still readable, but it no longer claims to be there for Maya's benefit.
+- **A hundred and twenty lines of the `Flag` class were one-line forwards to the wrapped node** —
+  fourteen dunder methods, each `return self.node.<the same name>(...)`. They have to exist on the
+  class, because Python looks dunders up on the type and never reaches `__getattr__`, so they are
+  built from a list of names now rather than typed out.
+- `create_align_transform` was reached through `rig_utils`, so building a flag pulled in 1,752 lines
+  of rig building — and everything in `rig_utils`, in turn, needs flags. It is three fixed arguments
+  to `create_aligned_parent_group`, so it moved into `utils/groups.py` beside the function it wraps,
+  and `frag_flag` now depends on nothing that depends on it. The serializer version is written into
+  every file and has never been read; that is still true, and now said out loud. `Flag.create` wrote
+  the same four lines four times over for the four marker attributes, and named a temporary curve
+  transform after a shape it was about to throw away.
+
+`flag_mirror.py` came over as it stands, minus an unused `import re` — it was rewritten during the
+mirror calibration work. It touches no Maya at all: which flag pairs with which is a naming
+question, answerable with certainty on whole underscore-separated tokens; which channels flip is a
+rigging question that names cannot answer, so the module names the two conventions and the animation
+library measures which one a rig obeys.
+
+**Callers to rewire when their modules are ported.** `rig_utils.create_align_transform` is
+`groups.create_align_transform` — fourteen call sites, in `rfk_chain.py` (5),
+`rfk_stretch_chain.py` (5), `spline_ik_rig.py`, `rig_aim_joint.py`, and `rig_utils.py` itself.

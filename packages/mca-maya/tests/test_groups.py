@@ -141,6 +141,37 @@ def body(suite):
 
     suite.check('create_aligned_child_group is gone - no callers, and no docstring either',
                 not hasattr(groups, 'create_aligned_child_group'))
+
+    # -- the align transform a rig control gets ------------------------------------------- #
+    # This lived in rig_utils, which meant that building a flag pulled in 1,752 lines of rig
+    # building - and everything in rig_utils needs flags. It is three arguments and a name.
+    harness.new_scene()
+    control = pm.createNode('transform', name='a_control')
+    control.translate.set((1, 2, 3))
+    align = groups.create_align_transform(control)
+    suite.check('a control gets an align transform', align is not None and pm.objExists(align))
+    suite.check('named with the suffix the rig uses',
+                str(align).endswith(groups.ALIGN_TRANSFORM_SUFFIX), str(align))
+    suite.check('with the control under it', control.getParent() == align)
+    suite.check("so the control's own channels read zero",
+                all(abs(value) < 0.001 for value in control.translate.get()))
+    suite.check('while it is still where it was',
+                abs(pm.xform(control, query=True, worldSpace=True, translation=True)[0] - 1) < 0.001)
+    suite.check('and the two point at each other',
+                control.attr(groups.ALIGN_TRANSFORM_ATTR).get() == align)
+    suite.check('asking again gives the group that is already there',
+                groups.create_align_transform(control) == align)
+    suite.check('and it can be found without making one',
+                groups.get_aligned_parent_group(control) == align)
+
+    harness.new_scene()
+    control = pm.createNode('transform', name='oriented_control')
+    orient_source = pm.createNode('transform', name='orient_from')
+    orient_source.rotateY.set(30)
+    align = groups.create_align_transform(control, orient_obj=orient_source)
+    suite.check('the orientation can come from somewhere else',
+                abs(align.rotateY.get() - 30) < 0.01, str(align.rotate.get()))
+
     suite.note('maya', harness.maya_version())
 
 

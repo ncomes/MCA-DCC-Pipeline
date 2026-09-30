@@ -43,6 +43,9 @@ ALIGN_TRANSFORM_ATTR = 'alignTransform'
 #: The attribute the align group carries, pointing back down at its control.
 ALIGN_OBJECT_ATTR = 'alignObject'
 
+#: The suffix an align group's name gets, so it can be recognised in an outliner.
+ALIGN_TRANSFORM_SUFFIX = 'align_transform'
+
 
 def get_aligned_parent_group(obj, attr_name=ALIGN_TRANSFORM_ATTR):
     """
@@ -154,3 +157,25 @@ def transform_scale(align_grp, flag_node, translate_scale=(1, 1, 1)):
         attribute = flag_node.attr('scale{}'.format(axis))
         attribute.lock()
         attribute.set(keyable=False, channelBox=False)
+
+
+def create_align_transform(obj, orient_obj=None):
+    """
+    The align group a rig control gets, under the name the rig uses for it.
+
+    :func:`create_aligned_parent_group` with the suffix and the attribute names the rigging code
+    has always used. It lived in ``rig_utils`` before, which meant that importing a flag pulled in
+    1,752 lines of rig building - and everything in ``rig_utils``, in turn, needs flags. It is
+    three arguments and a name; it belongs here with the group it makes.
+
+    :param obj: The control to zero out.
+    :param orient_obj: Take the group's orientation from this node instead of from the control.
+    :return: The group. The one that is already there, when the control has one.
+    :rtype: pm.nt.Transform
+    """
+
+    return create_aligned_parent_group(obj,
+                                       suffix=ALIGN_TRANSFORM_SUFFIX,
+                                       attr_name=ALIGN_TRANSFORM_ATTR,
+                                       obj_attr=ALIGN_OBJECT_ATTR,
+                                       orient_obj=orient_obj)
