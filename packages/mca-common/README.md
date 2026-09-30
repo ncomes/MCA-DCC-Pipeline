@@ -5,7 +5,7 @@ MotionBuilder, Unreal, a standalone Python and the test suite.
 
 **Ported.** Every piece was read, brought over, cleaned and checked, one at a time, each landing
 finished rather than copied and marked for later. 34,249 lines of depot became 31,092, with
-**936 checks in 27 suites** — run them with `tests/run_tests.bat` on Windows or
+**940 checks in 27 suites** — run them with `tests/run_tests.bat` on Windows or
 `tests/run_tests.sh` anywhere. The suites need nothing but Python; the ones that draw need
 PySide and skip politely without it.
 
@@ -24,6 +24,7 @@ touch any of this.
 | `startup/dccs/` | ported, 21 checks — one bootstrap, three thin scripts |
 | `startup/dependencies/requirements.txt` | ported — the list the launcher installs |
 | `startup/attach.py` | new, 16 checks — how anything outside a DCC finds a project |
+| `startup/startup_menus.py` | ported, 4 checks |
 | `startup/configs/common_env.py` | **dropped** — see below |
 | `pyqt/pygui.py`, `pyqt/qt_utils/windows.py` | ported, 21 checks |
 | `pyqt/` (the window classes, dialogs, helpers) | to do — needs `resources/` first |
@@ -63,6 +64,25 @@ log.setup_file_logging('Wayward', 'maya')
 `MCA_LOGGING_LEVEL` sets the level. `MCA_LOGS_ROOT` and `MCA_PREFS_ROOT` say where files go,
 which is how the launcher points a DCC at the right folders and how a test run writes nowhere
 near a real machine's.
+
+## The menu entries every DCC shares
+
+`startup/startup_menus.py` is what a DCC's own menu points its documentation entries at, so the
+Maya menu and the MotionBuilder menu open the same pages. Where those pages are comes from the
+`urls` block of the package manifest — **blank in this repository**, since the ones it replaces
+pointed at a previous employer's wiki.
+
+A blank one used to mean `webbrowser.open('')`: a browser window at whatever was there before,
+which reads as the tool being broken rather than the page not existing. It says there is no page
+yet. It also read the manifest through `textio.packages`, the module `package_config` replaced,
+and built its package manager **at module scope** — so a manifest with a problem in it took the
+DCC's whole menu down while the menu was being built. And `open_plastic_folder` was named for a
+source control the project stopped using, indexed `[0]` into a function that no longer exists,
+and ran `'explorer ' + path`, so a project path with a space in it opened the wrong folder, on
+Windows only.
+
+This one was missed on the first pass through `startup/` and found by surveying mca-maya, which
+imports it from two DCCs.
 
 ## Data files
 

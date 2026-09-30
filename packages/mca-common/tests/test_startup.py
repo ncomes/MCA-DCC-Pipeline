@@ -211,5 +211,27 @@ def body(suite):
     suite.note('checks_written', len(suite.checks))
 
 
+    # ---------------------------------------------------------------- #
+    # the menu entries every DCC shares
+    # ---------------------------------------------------------------- #
+    from mca.common.startup import startup_menus
+
+    # It read the manifest through textio.packages - replaced by package_config - and built its
+    # package manager at module scope, so a manifest with a problem in it took a DCC's whole
+    # menu down while the menu was being built.
+    suite.check('the documentation pages are read when asked for, not when imported',
+                isinstance(startup_menus.documentation_urls(), dict))
+    # A blank url used to mean webbrowser.open(''): a browser window at whatever was there
+    # before, which reads as the tool being broken rather than the page not existing.
+    suite.check('a page the project has not got yet is not opened, and says so',
+                startup_menus.open_documentation('rigging') is False and
+                startup_menus.rigging_url_menu() is False)
+    suite.check('every menu entry a DCC offers has a function behind it',
+                all(hasattr(startup_menus, '{0}_url_menu'.format(page))
+                    for page, _ in startup_menus.DOCUMENTATION_PAGES))
+    suite.check('and opening the project folder with no project says so rather than running '
+                '"explorer " plus nothing',
+                startup_menus.open_project_folder() is False)
+
 if __name__ == '__main__':
     sys.exit(harness.run('startup', body))
