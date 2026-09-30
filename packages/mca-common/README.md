@@ -36,7 +36,8 @@ Each piece lands finished rather than copied and marked for later.
 | `tools/` (doccrawler, toolbox, assetregister) | to do — 14,700 lines of UI |
 | `assetlist/` (templates, categories, the base record) | ported, 61 checks |
 | `assetlist/` (unified entry and registry) | ported, 68 checks |
-| `assetlist/` (asset manager, the flat API) | next |
+| `assetlist/` (asset manager, validate_assets) | ported, 39 checks |
+| `assetlist/assetlist_api.py` | next — the flat API for scripts and MCP |
 | `assetlist/migrate_to_unified.py`, `migrate_asset_ids.py` | **dropped** — see below |
 | `animlib/` | to do |
 
@@ -626,6 +627,38 @@ week old). What changed:
 - **The engine path had a project's name written into it**: `build_engine_path` prefixed
   `/Game/Wayward/`. `MCA_ENGINE_CONTENT_ROOT` says it now, so another project is another
   variable rather than another edit.
+
+### The read layer
+
+```python
+from mca.common.assetlist import asset_manager
+
+manager = asset_manager.get_asset_manager()
+hero = manager.get_record_by_name('Hero Bot')
+for gear in manager.iter_children(hero.asset_id):
+    ...
+```
+
+Every asset, read once and indexed — by id, by name, by category, and by what belongs to what.
+A record is frozen, so nothing can change the registry by reading it.
+
+**Cycles were only looked for from the roots.** `_validate` walked down from every root asset,
+so a cycle that no root reaches — A's parent is B and B's parent is A, where neither is a root —
+was never visited. The cycles that can hang a rig build were exactly the ones nothing could
+find. Every record is a starting point now.
+
+**Two assets sharing a display name went unreported.** `get_record_by_name` answers the first
+one loaded, so the other is an asset an artist can see in a list and cannot open. The report
+says so now, beside the duplicate namespaces it already reported.
+
+`--skip-gear` on the command-line check **did nothing**: it collected the ids to ignore with
+`iter_category('Gear')`, and `Gear` is not a category — gear lives in categories of its own,
+Hats and Armor and Shirts, each flagged as gear in the project's config. The set was always
+empty and every gear problem was reported anyway.
+
+And one of mine: `paths.get_categories_manifest_path()` answered `categories.manifest` for one
+commit, where the file on disk is `categories.json`, so **nothing in the registry would have
+loaded at all**. This suite is what found it; `tests/test_paths.py` now checks the name.
 
 ## What is not coming across
 

@@ -108,7 +108,8 @@ class Suite(object):
         if error:
             print(error)
         print('')
-        print('{}: {}/{} passed'.format(self.name, results['passed'], results['total']))
+        print('{}: {}/{} passed{}'.format(self.name, results['passed'], results['total'],
+                                          ' - AND THEN THE SUITE ITSELF BLEW UP' if error else ''))
         for failure in self.failures:
             print('  FAILED  {}'.format(failure))
         print('  details: {}'.format(path))

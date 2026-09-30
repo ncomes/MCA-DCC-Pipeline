@@ -195,11 +195,13 @@ def get_asset_lists_path():
 
 def get_categories_manifest_path():
     """
-    :return: The asset categories manifest, or ''.
+    :return: The file listing the project's asset categories, or ''. It is the name the file
+        on disk actually has - ``categories.json`` - which this answered as
+        ``categories.manifest`` for one commit, so nothing in the registry loaded at all.
     :rtype: str
     """
 
-    return under(get_asset_list_path(), 'categories.manifest')
+    return under(get_asset_list_path(), 'categories.json')
 
 
 def get_asset_list_file_path():

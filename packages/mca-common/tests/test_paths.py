@@ -19,7 +19,7 @@ import harness  # noqa: E402
 
 harness.add_package_to_path()
 
-from mca.common.paths import path_utils, project_paths  # noqa: E402
+from mca.common.paths import path_utils, paths, project_paths  # noqa: E402
 from mca.common.startup.configs import consts  # noqa: E402
 from mca.common.textio import yamlio  # noqa: E402
 from mca.common.utils import platforms  # noqa: E402
@@ -203,6 +203,13 @@ def body(suite):
                 path_utils.to_relative_path('') == '' and path_utils.to_full_path('') == '')
 
     suite.note('checks_written', len(suite.checks))
+
+
+    # The registry reads this file by name, so the name has to be the one on disk. It was
+    # 'categories.manifest' here for one commit, and nothing in the asset registry loaded.
+    suite.check('the category manifest is the file that is actually there, categories.json',
+                paths.get_categories_manifest_path().endswith('categories.json'),
+                paths.get_categories_manifest_path())
 
 
 if __name__ == '__main__':
