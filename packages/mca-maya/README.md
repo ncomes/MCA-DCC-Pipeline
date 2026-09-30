@@ -13,6 +13,8 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
+**463 checks in 7 suites** so far.
+
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
 zero - a machine without Maya is not a failure.
@@ -28,6 +30,8 @@ any of this.
 | `utils/naming.py`, `utils/namespace.py` | ported, 84 checks |
 | `utils/maya_utils.py`, `utils/plugins.py`, `utils/display_layers.py`, `utils/constraint.py` | ported, 65 checks |
 | `utils/optionvars.py` | ported, 43 checks — 269 lines to 235, and the metaclass is gone |
+| `utils/dag.py` | ported, 58 checks — one function looped forever, another raised on any node with a shape |
+| `utils/om/` | ported, 133 checks — every transform attribute serialized with `'type': None` |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -233,3 +237,84 @@ variable of our own, and the real call is a no-op in batch.
 A note for when the callers are ported: `namespace.get_namespace` no longer takes
 `check_node`, and five modules pass it. `camera_utils`, `cine_file_utils`, `shot_utils`,
 `scene_manager_tool` and `rig_utils` each need the argument dropped.
+
+## `utils/dag.py` — walking the hierarchy
+
+- **`get_between_nodes` looped forever** when the two nodes were not in the same hierarchy.
+  It walked up from `last` looking for `first`; when it ran off the top of the DAG
+  `current_node` became `None`, the loop condition `first != current_node` stayed true, and
+  the body kept appending `None`. It logged a warning and then hung, growing a list of `None`
+  until Maya ran out of memory. Twenty-one places in the pipeline call it.
+- **`_get_deepest_child` raised on any node with a shape.** Its guard was a bare `return` —
+  `None`, not the two values its caller unpacks — and it recursed into `getChildren()` with no
+  filter, so a transform's own shape node went in and `child_node, child_depth = ...` failed
+  with `TypeError: cannot unpack non-sequence NoneType`. The function exists to find the end
+  of a joint chain, and the pipeline's animation controls are joints with curve shapes on
+  them, so this was most calls.
+- **`set_node_color` raised in a batch Maya** whenever it was given an outliner colour. It
+  finished the colouring and then called `mel.eval('AEdagNodeCommonRefreshOutliners();')`
+  unconditionally, and that procedure belongs to Maya's attribute editor scripts, which a
+  headless Maya never loads. Every batch build or export that coloured an outliner entry
+  stopped there.
+- `get_ordered_hierarchy` and `get_children_in_order` were two functions for one question,
+  with different argument names and different answers about the root; nothing called the
+  first. `create_line_between` was a second copy of `rig_utils.create_line_between`, and the
+  three callers all use that one — dropping it takes this module's import of
+  `mca.mya.deformations.cluster` with it, which is what made a leaf utility depend on the
+  deformation code.
+
+`set_node_color` is kept even though nothing calls it: `frag_rig` and four other modules set
+`overrideEnabled` and the colour attributes by hand, and should be rewired to it when they are
+ported.
+
+## `utils/om/` — the API layer
+
+Maya describes an attribute's type three incompatible ways: the API splits it across
+`MFnNumericAttribute`, `MFnUnitAttribute` and `MFnTypedAttribute`, each with its own
+enumeration; `addAttr` wants a string and a different flag depending on which; and those
+strings are not what `getAttr(type=True)` answers with. `attributetypes.py` gives each type one
+number of its own and holds the maps between them. It is the foundation under flag files and
+rig data, and it was wrong in a way that shows up in every file the pipeline has written.
+
+- **Every transform attribute serialized with `'type': None`.**
+  `maya_unit_type_to_internal_type` looked its argument up in `_MAYA_TYPE_FROM_TYPE`, keyed by
+  *string* names, rather than in `_MAYA_UNIT_TYPE_TO_INTERNAL_TYPE`, keyed by the unit
+  enumeration it is handed — a table that existed and that nothing ever read. A transform's
+  `translate` is a distance and its `rotate` is an angle, both unit attributes, so the type of
+  the most commonly serialized attributes in the pipeline was missing from every flag file and
+  every piece of rig data written since.
+- **An angle translated to `'angle'`, which Maya does not accept.** `addAttr` answers "Type
+  specified for new attribute is unknown" and pymel's `type=` answers "type not supported".
+  The string is `'doubleAngle'`. An angle attribute could be read but never rebuilt.
+- **A float array translated to `'fltMatrix'`** — a float *matrix*, and an `attributeType`
+  where the attribute needs a `dataType`. Rebuilding one made a matrix attribute.
+- **Nine types had no translation at all**: distance, int, and every array but the float one,
+  so `om_type_to_pymel_type` answered `None` and the caller passed `None` to `addAttr`.
+- The mapping now has a check per entry that builds the attribute in a real Maya and confirms
+  Maya takes the name — which is how the three wrong ones and the nine missing ones were
+  found. Three types are deliberately left with no name, because Maya has none that `addAttr`
+  takes: a memory address, a matrix array, and four doubles (Maya stops at three components,
+  and answering `'double3'` would quietly build an attribute one component short).
+- `maya_type_from_api_type` was documented to take an integer and looked it up in a table
+  keyed by strings, so it answered `(None, None)` for every call. Nothing called it, nor
+  `api_type_from_pymel_type`, nor used `MAYA_NUMERIC_MULTI_TYPES`. Gone with the two tables
+  behind them. `_TYPE_TO_STRING` was a hand-written list of the constants' own names, 38 lines
+  and one edit from disagreeing with them; it is built from them.
+- **`om2_change_curve_start_time` could not do what it documented.** Called with no offset —
+  "if no shift length is given it will zero the animation" — it reached `if offset > 0` with
+  `offset` still `None`: `TypeError` in Python 3. The whole body sat inside a bare `except:`,
+  so the call returned quietly having moved nothing. It also built an `om2.MDGContext(mtime)`
+  and threw it away. **`get_om2_keyframe_range_from_scene` read only rotation curves** —
+  `kAnimCurveTimeToAngular` and nothing else — so a scene animated in translation reported no
+  animation. Those two, `get_om2_keyframes_from_pynode_list` (which answered a tuple where it
+  documented a list) and `pynode_list_to_om2_selection_list` had no callers; they are gone,
+  and with them `om_utils`' imports of `OpenMayaAnim` and `ma_decorators`.
+- `serialize_plug`'s `optimize` pass popped `min`, `max`, `softMin` and `softMax`, none of
+  which it ever sets — `attr_utils.serialize_attribute` adds the limits *after* this returns,
+  so those four pops could not fire and the limits are written whether set or not. That is for
+  `attr_utils` to fix, and is noted there.
+- `get_enum_names` had a bare `except Exception: pass` around the one call in it that can
+  fail, so an enumeration numbered with a gap silently lost its names.
+- `MFnFloatArrayData` is still missing from OpenMaya 2.0 in Maya 2025, so a float array is
+  read as doubles. The comment saying so was a `TODO`; it is the answer, not a task, and there
+  is a check that will tell us if a future Maya adds it.
