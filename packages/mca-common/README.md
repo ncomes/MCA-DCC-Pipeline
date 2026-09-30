@@ -29,11 +29,12 @@ Each piece lands finished rather than copied and marked for later.
 | `utils/` (process, sounds, video) | ported, 41 checks |
 | `utils/folders.py`, `project.py`, `prefvars.py` | **dropped** — see below |
 | `utils/pymaths.py` | ported, 38 checks — half of it dropped |
-| `utils/plastic.py` | to do — with the source-control interface |
 | `sourcecontrol/` | ported, 33 checks — one interface, Perforce behind it |
 | `plasticscm/`, `utils/plastic.py` | **dropped** — see below |
-| `tools/` (8 of them) | next |
-| `animlib`, `assetlist`, `modifiers` | to do |
+| `tools/progressbar`, `tools/example_tool` | ported, 21 checks |
+| `tools/dcctracking`, `tools/python_editor` | **dropped** — see below |
+| `tools/` (doccrawler, toolbox, assetregister) | to do — 14,700 lines of UI |
+| `assetlist/`, `animlib/` | to do |
 
 ## Logging
 
@@ -474,6 +475,54 @@ error level, which is every machine that does not use Perforce.
 `shutdown()` calls `sourcecontrol.reset()`, because the workspace is found by looking for the
 project's config file in each workspace root — so switching project has to ask again.
 
+## The progress window
+
+```python
+from mca.common.tools.progressbar import progressbar_ui
+
+progress = progressbar_ui.ProgressBarStandard()
+progress.update_status(40, 'Skinning the left arm')
+progress.update_status(100, 'Done')          # 100 closes it
+```
+
+One window wherever it is asked for, so a rig build and the skinning it calls talk to the same
+one, and a job running inside another job adds a second row instead of fighting over the first.
+Six modules in mca-maya use it.
+
+**It would have raised in Maya 2025.** `update_value`'s own docstring called its argument a
+float — `:param float value: Progress bar percentage.` — and handed it to
+`QProgressBar.setValue`. PySide2 truncated a float quietly; PySide6, which is what Maya 2025
+and 2026 have, refuses it. It rounds now.
+
+It also **stopped the DCC for half a second at the end of every job**: on reaching 100 it called
+`time.sleep(0.5)` on the user interface thread, to let the artist admire a full bar.
+
+`update_label` and `update_value` both read `rows[-1]`, so a job still reporting progress after
+the artist closed the window raised `IndexError` into the middle of whatever it was doing, and
+`remove_progressbar` raised the same on an empty list — from a function whose only job is
+tidying up. Every method copes with there being no window now.
+
+The window's height was worked out as `len(rows) * 200` when adding a row and
+`len(rows) * 100` when removing one, so finishing an inner job left the window half the height
+it should be. And `QApplication.processEvents()` ran on every single update — thousands of times
+in a skinning loop, each one re-entering the event loop — where it now runs when the displayed
+percentage actually changes.
+
+The widgets are built in code. The version this replaces loaded a Qt Designer file for a label
+and a progress bar.
+
+## The example tool
+
+`tools/example_tool` is the smallest tool in the framework and is kept deliberately: it is the
+one to copy. It shows what `MCAMainWindow` gives you for nothing — the framework's title, the
+project's stylesheet, a remembered size and position, closing the copy already open — and the
+two habits worth having: build the widgets in code, and put the work in a function with no Qt
+in it, so a farm job, an MCP server or a test can call it.
+
+The version it replaces loaded its layout from `example_tool/ui/testui.ui` in the common tools
+folder, which an open clone does not have — so the example nobody could run was the one meant
+to show how — and its button called `print`, in a framework with a logger.
+
 ## What is not coming across
 
 `folders.py` held one function, `get_files`, which nothing in the framework imports — and its
@@ -481,6 +530,28 @@ two branches disagreed: the recursive one walked with `os.walk` and returned fil
 one filtered `os.listdir` and returned **directories too**, from a function called `get_files`.
 
 `project.py` was ten lines of section comments and no code.
+
+`tools/dcctracking` is not coming across, and would not have come across in any case:
+
+- It posts to a **Google spreadsheet whose id is hardcoded in the module**, belonging to a
+  previous employer.
+- `dcc_user_tracking_data.yaml` beside it holds the **full names, work email addresses, job
+  titles, teams and locations of that employer's staff**, keyed by a hash of their user name.
+  That cannot go into a public repository, and it is not ours to publish.
+- It could not run anyway: it opens with `from mca.common.googlesheets import google_sheets`,
+  and there is no `googlesheets` package anywhere in the framework — so importing the module
+  raises `ImportError`. Two of the names it calls on `mca.common` do not exist either.
+- `ddc_tool_entry_thead`, the version meant to keep tracking off the main thread, reads
+  `process.cpu_threading(ddc_tool_entry(fn, **kwargs))` — which **calls** the tracking, on the
+  main thread, and then starts a thread to run its return value, `None`.
+
+If MCA wants to know which tools artists use, that is a small opt-in module with its
+destination in configuration and no personal data in the repository. It is not this.
+
+`tools/python_editor` is 28 lines that subclass `mca.mya.pyqt.mayawindows` — a Maya module,
+imported from inside mca-common, which is the one direction the framework's layering does not
+allow, and it is why nothing could import it outside Maya. The editor artists actually use is
+its own application (`MCAEditor`), with the MCP server this pipeline talks to.
 
 `plasticscm/` is 1,824 lines — a REST client, two model layers and a set of Qt dialogs for
 Plastic SCM — and **nothing imports any of it**, anywhere in the framework. The studio moved to
