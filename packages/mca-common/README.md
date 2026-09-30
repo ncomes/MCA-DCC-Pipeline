@@ -33,13 +33,13 @@ Each piece lands finished rather than copied and marked for later.
 | `plasticscm/`, `utils/plastic.py` | **dropped** — see below |
 | `tools/progressbar`, `tools/example_tool` | ported, 21 checks |
 | `tools/dcctracking`, `tools/python_editor` | **dropped** — see below |
-| `tools/` (doccrawler, toolbox, assetregister) | to do — 14,700 lines of UI |
 | `assetlist/` (templates, categories, the base record) | ported, 61 checks |
 | `assetlist/` (unified entry and registry) | ported, 68 checks |
 | `assetlist/` (asset manager, validate_assets) | ported, 39 checks |
-| `assetlist/assetlist_api.py` | next — the flat API for scripts and MCP |
+| `assetlist/assetlist_api.py` | ported, 50 checks — **assetlist done** |
 | `assetlist/migrate_to_unified.py`, `migrate_asset_ids.py` | **dropped** — see below |
-| `animlib/` | to do |
+| `animlib/` | next |
+| `tools/` (doccrawler, toolbox, assetregister) | to do — 14,700 lines of UI |
 
 ## Logging
 
@@ -659,6 +659,33 @@ empty and every gear problem was reported anyway.
 And one of mine: `paths.get_categories_manifest_path()` answered `categories.manifest` for one
 commit, where the file on disk is `categories.json`, so **nothing in the registry would have
 loaded at all**. This suite is what found it; `tests/test_paths.py` now checks the name.
+
+### The flat API
+
+```python
+from mca.common.assetlist import assetlist_api
+
+assetlist_api.list_categories()
+assetlist_api.register_asset('Frostwind', 'Characters', subtype='Heroes', faction='Agents')
+```
+
+What a script, an MCP tool or the in-DCC AI calls. Every function answers
+`{'ok': bool, 'result': ..., 'message': str}` and never raises, and the failure messages are
+part of the API: an unknown category lists the valid ones, an unknown id offers near matches, a
+value outside a controlled vocabulary names what is allowed. A caller that reads the message can
+correct itself without another round trip. That design came across untouched — it is the best
+thing in the package.
+
+What changed:
+
+- **`transfer_asset` checked neither of its two saves.** It wrote the asset into its new
+  category, then removed it from the old one — and a failure on the second left one asset id in
+  two categories, which the manager resolves by keeping whichever it loaded first and mentioning
+  it at debug level. Both are checked now, and a half-finished move says which category to take
+  the asset out of.
+- **`reload` re-reads the category configuration too.** The configuration is read once and kept
+  now, so a category another session added would never have appeared.
+- `check_assets` reports the duplicate display names the validation report gained.
 
 ## What is not coming across
 
