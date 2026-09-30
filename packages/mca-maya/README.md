@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,736 checks in 25 suites** so far — 1,752 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,790 checks in 26 suites** so far — 1,806 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -69,6 +69,7 @@ any of this.
 | `rigging/flags/flag_utils.py`, `rigging/flags/flag_api.py` | waiting on `frag/` |
 | `rigging/cog_chain_rig.py`, `world_chain_rig.py`, `reverse_chain_rig.py`, `ikfk_switch.py`, `fk_chain.py`, `multi_constraint_rig.py` | ported, 70 checks — an FK chain built without align transforms raised |
 | `rigging/reverse_foot_rig.py`, `rigging/spline_ik_rig.py` | ported, 61 checks — a spline IK built in a namespace raised on its constraint weights |
+| `utils/locators.py` (new), `rigging/ribbon_setup.py`, `rig_aim_joint.py`, `twist_setup.py` | ported, 54 checks — the locator builders moved out of `rig_utils` |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1254,3 +1255,51 @@ into a body rather than bunching up at its base.
   the stretch and the retract are each their own function now. The two reverse foot controls are
   named inconsistently — the foot control takes the full side name and the toe control its first
   letter, so `f_left_foot` sits beside `f_l_foot_toe_ik`. Left alone: rig data refers to these names.
+
+## `utils/locators.py`, and the three setups that were waiting on it
+
+The last thing holding most of `rigging/` behind `rig_utils` was two eight-line functions that put a
+locator somewhere. They are not about rigs — a locator is the cheapest thing in Maya with a position
+and an orientation — so they are in `utils/locators.py` now, and anything that wants a marker no
+longer pulls 1,752 lines of rig building in behind it. The three modules that needed them, or needed
+`find_primary_axis`, come with them: the ribbon, the aim setup and the twist setup.
+
+- **`create_locator_at_object` answered a locator at the world origin when given nothing, silently.**
+  It reads as a guard — `if not obj or not pm.objExists(obj)` — but what it guards is the caller being
+  told. A build that asked for a marker at a node which had been deleted got one at the origin and
+  carried on from there.
+- **`find_primary_axis` answered an upper-case axis letter; `dag.get_primary_axis` answers a
+  lower-case one.** Both `ribbon_setup` and `twist_setup` use the letter as an index into `'XYZ'`, so
+  the two had to move together — `twist_setup` was already calling `.lower()` on the answer at both
+  its use sites, which is what went away.
+- **A ribbon along fewer than three nodes gave the plane a negative number of patches.** `patchesV`
+  is `len(node_list) * 2 - 4`, which is -2 for one node and 0 for two, and Maya refuses both. Nothing
+  said so.
+- **The aim setup named its up locator by string surgery on another locator's name** —
+  `up_loc.rename(up_loc.nodeName().replace('_loc_loc', '_up_loc'))`, which only works because
+  `create_locator_at_object` appends `_loc`, so a locator made from a locator called `x_loc` comes out
+  `x_loc_loc`. Anything else about either name and the replacement finds nothing and the locator keeps
+  the double suffix.
+- **The aim control was named after the joint's full path** (`bind_joint.name()`, namespace and all)
+  and was **meta-connected to a marker that is deleted three lines later** — `Flag.create` wires a
+  control to what it was built on, both ways, and here that is a temporary locator. It asks not to be
+  wired now.
+- **A twist chain of more than three joints was refused silently** (three is the limit because one
+  `multiplyDivide` node has three channels), an empty list raised `IndexError` on `joint_list[0]`, and
+  the driving joint's child was found with `parent_chain.index(parent_joint) + 1` — an `IndexError`
+  when the driving joint is last in its chain and a `ValueError` when the markup does not put it in
+  that chain at all. Both are markup mistakes a rigger can make, and both now name the joint and the
+  region.
+- `ribbon_setup` read `previous_pos` inside a branch that only runs from the second node and assigned
+  it at the bottom of the loop, so it worked by the order of the lines; both running values start at
+  None. The plane was called `nurbs_curve` throughout. The numbers that place the CVs — four per row,
+  two and a half units apart — were in the arithmetic. `twist_setup`'s 230-line body is four
+  functions, and the thing nobody would guess from reading it — that `sorted(joint_list)` sorts
+  PyNodes *by name*, so the order the twist is distributed in is the order the joints happen to be
+  named in — is written down. `quick_build_twist_setup` has no callers and is kept: it is the only
+  place that shows how `ChainMarkup.twist_joints` is meant to be walked.
+
+**What is left of `rig_utils`' hold on `rigging/`.** `rfk_chain`, `rfk_stretch_chain` and `ik_chain`
+still import it — the first two only for the locator builder and the align transform, which are both
+moved, so they are unblocked; `ik_chain` also wants `create_line_between`, which needs
+`deformations/cluster.py`.
