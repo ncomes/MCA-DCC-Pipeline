@@ -17,9 +17,17 @@ What was wrong before:
   nothing - ``pm.rename`` updates the PyNode in place.
 - The array attributes were connected by their bare names: ``parent_obj.worldMatrix`` rather than
   ``worldMatrix[0]``. Maya picks element zero, so it worked, but a reader has to know that.
-- ``remove_matrix_constraint`` had no callers anywhere in the pipeline, and left the two message
-  attributes behind on the object it unpicked while clearing the artist's selection on its way
-  out. Gone; deleting the constraint group by hand does the same thing.
+- **``remove_matrix_constraint`` left half the constraint behind.** It deleted the two groups and
+  stopped there: the ``multMatrix`` and the ``decomposeMatrix`` stayed in the scene, still
+  reading the parent's world matrix, and the two attributes that say "this object is
+  constrained" stayed on the object - so a second ``matrix_constraint`` on it found markup for a
+  constraint that no longer existed. It also raised on an object that had never been
+  constrained, and cleared the artist's selection on its way out.
+- **Constraining an object twice left the first constraint running.** ``create_aligned_parent_group``
+  hands back the groups that are already there, so the second call built a second pair of matrix
+  nodes whose outputs replaced the first pair's connections - and the first pair stayed in the
+  scene, still evaluating, driving nothing. Re-constraining now takes the old one off first, so
+  pointing an object at a different parent is a thing you can just do.
 """
 
 # python imports
@@ -63,6 +71,24 @@ def _create_matrix_constraint_base():
     return [m_matrix, d_matrix]
 
 
+def get_matrix_constraint_group(child_obj):
+    """
+    The outer group of the matrix constraint on an object, if it has one.
+
+    :param pm.nt.Transform child_obj: The object to ask about.
+    :return: The group, or None when the object is not matrix constrained.
+    :rtype: pm.nt.Transform
+    """
+
+    if not child_obj.hasAttr(PARENT_CONSTRAINT_ATTR):
+        return None
+    group = child_obj.attr(PARENT_CONSTRAINT_ATTR).get()
+    if group is None or not pm.objExists(group):
+        # The markup outlived the constraint - a group deleted by hand, say.
+        return None
+    return group
+
+
 def matrix_constraint(parent_obj, child_obj, mo=True, t=True, r=True, s=True):
     """
     Drive a child from a parent through a matrix network rather than a constraint node.
@@ -77,6 +103,13 @@ def matrix_constraint(parent_obj, child_obj, mo=True, t=True, r=True, s=True):
         ``constraint_group`` and ``parent_constraint_group``.
     :rtype: dict
     """
+
+    if get_matrix_constraint_group(child_obj) is not None:
+        # The groups would be reused and the new matrix nodes would quietly replace the old
+        # pair's connections, leaving them in the scene driving nothing.
+        logger.debug('%s already had a matrix constraint on it; it was removed before the new '
+                     'one was built.', child_obj)
+        remove_matrix_constraint(child_obj)
 
     # The inner group takes the decomposed motion; the outer one is what the network measures
     # against, so the inner group's values stay readable rather than including its own result.
@@ -129,3 +162,93 @@ def matrix_constraint(parent_obj, child_obj, mo=True, t=True, r=True, s=True):
             'decomp_matrix': d_matrix,
             'constraint_group': matrix_grp,
             'parent_constraint_group': matrix_parent_grp}
+
+def _connected_matrix_nodes(*nodes):
+    """
+    Every tagged matrix node reachable from the given nodes through other tagged matrix nodes.
+
+    The walk only ever steps onto a ``multMatrix`` or a ``decomposeMatrix`` carrying
+    :data:`MATRIX_CONSTRAINT_TAG`, so it cannot wander out into the rig through the parent the
+    constraint is reading.
+
+    :param nodes: Where to start - the constraint's groups.
+    :return: The matrix nodes, in the order they were found.
+    :rtype: list(pm.PyNode)
+    """
+
+    found = []
+    seen = set()
+    to_walk = [node for node in nodes if node is not None and pm.objExists(node)]
+    while to_walk:
+        node = to_walk.pop()
+        for other in (node.listConnections(type=(pm.nt.MultMatrix, pm.nt.DecomposeMatrix)) or []):
+            if other in seen:
+                continue
+            seen.add(other)
+            if other.hasAttr(MATRIX_CONSTRAINT_TAG):
+                found.append(other)
+                to_walk.append(other)
+    return found
+
+
+def remove_matrix_constraint(child_obj):
+    """
+    Take a matrix constraint off an object and leave nothing of it behind.
+
+    The object keeps the pose it is in: it is parented back to whatever was above the
+    constraint's outer group, which bakes the offset it was being held at into its own channels.
+    Both groups go, both matrix nodes go, and the two attributes that marked the object as
+    constrained go with them.
+
+    :param pm.nt.Transform child_obj: The object that is being driven.
+    :return: True when a constraint was found and removed.
+    :rtype: bool
+    """
+
+    constraint_grp = get_matrix_constraint_group(child_obj)
+    if constraint_grp is None:
+        # Still worth clearing any markup left over from a group somebody deleted by hand.
+        removed_markup = _remove_constraint_markup(child_obj)
+        logger.debug('%s has no matrix constraint on it%s.', child_obj,
+                     ', but it was still marked as having one' if removed_markup else '')
+        return False
+
+    # Collected before anything is deleted: once the groups go, so do the connections that
+    # lead to the matrix nodes.
+    matrix_node_list = _connected_matrix_nodes(constraint_grp, child_obj.getParent())
+
+    original_parent = constraint_grp.getParent()
+    if original_parent:
+        pm.parent(child_obj, original_parent)
+    else:
+        pm.parent(child_obj, world=True)
+
+    # Deleting the outer group takes the inner one with it, and usually the matrix nodes too -
+    # they are the inner group's history, and Maya's delete follows history. Usually, not
+    # always: with t, r and s all off, nothing connects them to a transform. So whatever is
+    # still standing afterwards is deleted by name.
+    pm.delete(constraint_grp)
+    left_over = [node for node in matrix_node_list if pm.objExists(node)]
+    if left_over:
+        pm.delete(left_over)
+
+    _remove_constraint_markup(child_obj)
+    return True
+
+
+def _remove_constraint_markup(child_obj):
+    """
+    Take the two "this object is matrix constrained" attributes off an object.
+
+    :param pm.nt.Transform child_obj: The object to clean.
+    :return: True when there was something to take off.
+    :rtype: bool
+    """
+
+    removed = False
+    for attr_name in (PARENT_CONSTRAINT_ATTR, PARENT_CONSTRAINT_OBJECT_ATTR):
+        if child_obj.hasAttr(attr_name):
+            child_obj.attr(attr_name).unlock()
+            child_obj.deleteAttr(attr_name)
+            removed = True
+    return removed

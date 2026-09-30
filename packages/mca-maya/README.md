@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,327 checks in 20 suites** so far — 1,343 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,349 checks in 20 suites** so far — 1,365 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -61,7 +61,7 @@ any of this.
 | `animation/` — `keyframes.py`, `baking.py`, `anim_curves.py`, `anim_layers.py` | ported, 93 checks — baking without rotation zeroed every static rotation |
 | `modeling/` — `vert_utils.py`, `surface.py`, `geometry.py`, `follicle.py`, `blendshape_model.py` | ported, 104 checks — the closest point on a surface was answered with a position, not a parameter |
 | `modeling/rivets.py`, `modeling/face_model.py`, `modeling/blendshape_node.py` | waiting on `rigging/` and `face/` |
-| `rigging/matrix_nodes.py`, `rigging/ik_utils.py`, `rigging/space_switch_rig.py` | ported, 49 checks — building a space switch moved the control to its parent's origin |
+| `rigging/matrix_nodes.py`, `rigging/ik_utils.py`, `rigging/space_switch_rig.py` | ported, 71 checks — building a space switch moved the control to its parent's origin |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -913,9 +913,21 @@ that depend on nothing: the matrix constraint, the pole vector maths, and the sp
   also raised, because both `addAttr` calls went in unguarded and the channel box separator is
   shared between switches; and a control with no parent raised on
   `pm.parent(group, None)`.
-- `remove_matrix_constraint` had no callers anywhere, and left its two message attributes behind
-  on the object it unpicked while clearing the artist's selection on the way out. Gone — deleting
-  the constraint group by hand does the same thing. `matrix_nodes` also re-fetched a node from
-  the scene immediately after renaming it, which does nothing, and connected array attributes by
-  their bare names (`worldMatrix` rather than `worldMatrix[0]`), which works only because Maya
-  picks element zero for you.
+- **`remove_matrix_constraint` left half the constraint behind.** It deleted the two groups and
+  stopped there: the two attributes that mark an object as constrained stayed on it, so anything
+  asking afterwards was told there was still a constraint; and where Maya's delete did not follow
+  history — with `t`, `r` and `s` all off, nothing connects the matrix nodes to a transform — the
+  `multMatrix` and `decomposeMatrix` stayed in the scene reading the parent's world matrix. It
+  also raised on an object that had never been constrained, and cleared the artist's selection on
+  the way out. It had no callers, but it is the only way to undo `matrix_constraint`, so it is
+  kept, fixed, and checked: constrain, remove, and the object is back under its original parent,
+  in the pose the constraint was holding it in, with nothing of the constraint left in the scene.
+- **Constraining an object twice left the first constraint running.**
+  `create_aligned_parent_group` hands back the groups that are already there, so a second
+  `matrix_constraint` on the same object built a second pair of matrix nodes whose outputs
+  quietly replaced the first pair's connections — and the first pair stayed in the scene, still
+  evaluating, driving nothing. Re-constraining takes the old one off first now, so pointing an
+  object at a different parent is a thing you can just do.
+- `matrix_nodes` also re-fetched a node from the scene immediately after renaming it, which does
+  nothing, and connected array attributes by their bare names (`worldMatrix` rather than
+  `worldMatrix[0]`), which works only because Maya picks element zero for you.

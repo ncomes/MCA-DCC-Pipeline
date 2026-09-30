@@ -89,8 +89,139 @@ def check_matrix_nodes(suite, pm):
     suite.check('without maintain offset the child snaps onto the parent',
                 abs(position[1]) < 0.001, str(position))
 
-    suite.check('remove_matrix_constraint had no callers and is gone',
-                not hasattr(matrix_nodes, 'remove_matrix_constraint'))
+    # -- scale ------------------------------------------------------------------------------ #
+    harness.new_scene()
+    driver = pm.createNode('transform', name='driver')
+    driven = pm.createNode('transform', name='driven')
+    matrix_nodes.matrix_constraint(driver, driven)
+    driver.scale.set((2, 2, 2))
+    suite.check('scaling the parent scales the child',
+                abs(pm.xform(driven, query=True, worldSpace=True, scale=True)[0] - 2) < 0.001,
+                str(pm.xform(driven, query=True, worldSpace=True, scale=True)))
+
+    # -- through a hierarchy ------------------------------------------------------------------ #
+    harness.new_scene()
+    top = pm.createNode('transform', name='top_grp')
+    driver = pm.createNode('transform', name='driver')
+    pm.parent(driver, top)
+    driven = pm.createNode('transform', name='driven')
+    matrix_nodes.matrix_constraint(driver, driven)
+    top.translate.set((0, 0, 11))
+    suite.check("the parent's own parent counts too",
+                abs(pm.xform(driven, query=True, worldSpace=True, translation=True)[2] - 11) < 0.001,
+                str(pm.xform(driven, query=True, worldSpace=True, translation=True)))
+
+    # -- asking about it ----------------------------------------------------------------------- #
+    harness.new_scene()
+    driver = pm.createNode('transform', name='driver')
+    driven = pm.createNode('transform', name='driven')
+    bare = pm.createNode('transform', name='never_constrained')
+    suite.check('an object with no constraint says so',
+                matrix_nodes.get_matrix_constraint_group(bare) is None)
+    made = matrix_nodes.matrix_constraint(driver, driven)
+    suite.check('and a constrained one gives up its outer group',
+                matrix_nodes.get_matrix_constraint_group(driven) ==
+                made['parent_constraint_group'])
+
+    # -- taking it off -------------------------------------------------------------------------- #
+    harness.new_scene()
+    parent_grp = pm.createNode('transform', name='rig_grp')
+    driver = pm.createNode('transform', name='driver')
+    driven = pm.createNode('transform', name='driven')
+    pm.parent(driven, parent_grp)
+    driven.translate.set((0, 3, 0))
+
+    matrix_nodes.matrix_constraint(driver, driven)
+    driver.translate.set((5, 0, 0))
+    held_at = pm.xform(driven, query=True, worldSpace=True, translation=True)
+
+    suite.check('removing a constraint says it found one',
+                matrix_nodes.remove_matrix_constraint(driven) is True)
+    suite.check('the object is back under the parent it came from',
+                driven.getParent() == parent_grp, str(driven.getParent()))
+    suite.check('left where the constraint was holding it',
+                all(abs(now - was) < 0.001 for now, was in
+                    zip(pm.xform(driven, query=True, worldSpace=True, translation=True), held_at)),
+                str(pm.xform(driven, query=True, worldSpace=True, translation=True)))
+    suite.check('both groups are gone',
+                not (cmds.ls('*matrix_constraint*') or []) and
+                not (cmds.ls('*constraint_parent_grp*') or []),
+                str(cmds.ls('*constraint*')))
+    # The bug: these were left in the scene, still reading the parent's world matrix.
+    suite.check('and so are both matrix nodes',
+                not (cmds.ls(type=('multMatrix', 'decomposeMatrix')) or []),
+                str(cmds.ls(type=('multMatrix', 'decomposeMatrix'))))
+    suite.check('the markup goes with them',
+                not driven.hasAttr(matrix_nodes.PARENT_CONSTRAINT_ATTR) and
+                not driven.hasAttr(matrix_nodes.PARENT_CONSTRAINT_OBJECT_ATTR))
+    suite.check('the driver is untouched', pm.objExists(driver))
+    suite.check('and the object no longer follows it',
+                driven.translate.listConnections() == [])
+
+    driver.translate.set((50, 0, 0))
+    suite.check('really no longer follows it',
+                abs(pm.xform(driven, query=True, worldSpace=True, translation=True)[0] -
+                    held_at[0]) < 0.001,
+                str(pm.xform(driven, query=True, worldSpace=True, translation=True)))
+
+    # -- taking off one that is not there ------------------------------------------------------- #
+    suite.check('removing a constraint that is not there is a no, not a raise',
+                matrix_nodes.remove_matrix_constraint(driven) is False)
+    harness.new_scene()
+    never = pm.createNode('transform', name='never_constrained')
+    suite.check('nor on an object that has never had one',
+                matrix_nodes.remove_matrix_constraint(never) is False)
+
+    # Markup left behind by somebody deleting the groups by hand is cleaned up rather than
+    # being taken as a constraint that is still there.
+    harness.new_scene()
+    driver = pm.createNode('transform', name='driver')
+    driven = pm.createNode('transform', name='driven')
+    made = matrix_nodes.matrix_constraint(driver, driven)
+    pm.parent(driven, world=True)
+    pm.delete(made['parent_constraint_group'])
+    suite.check('markup outliving its groups is not mistaken for a constraint',
+                matrix_nodes.get_matrix_constraint_group(driven) is None)
+    suite.check('and removing takes the stale markup off',
+                matrix_nodes.remove_matrix_constraint(driven) is False and
+                not driven.hasAttr(matrix_nodes.PARENT_CONSTRAINT_ATTR))
+
+    # -- the bug: constraining twice left the first one running --------------------------------- #
+    harness.new_scene()
+    first_driver = pm.createNode('transform', name='first_driver')
+    second_driver = pm.createNode('transform', name='second_driver')
+    driven = pm.createNode('transform', name='driven')
+
+    matrix_nodes.matrix_constraint(first_driver, driven)
+    matrix_nodes.matrix_constraint(second_driver, driven)
+    suite.check('constraining twice leaves one pair of matrix nodes, not two',
+                len(cmds.ls(type='multMatrix') or []) == 1,
+                str(cmds.ls(type='multMatrix')))
+    suite.check('and one decompose', len(cmds.ls(type='decomposeMatrix') or []) == 1,
+                str(cmds.ls(type='decomposeMatrix')))
+
+    second_driver.translate.set((0, 8, 0))
+    suite.check('the object follows the parent it was last pointed at',
+                abs(pm.xform(driven, query=True, worldSpace=True, translation=True)[1] - 8) < 0.001,
+                str(pm.xform(driven, query=True, worldSpace=True, translation=True)))
+    first_driver.translate.set((13, 0, 0))
+    suite.check('and not the one it used to follow',
+                abs(pm.xform(driven, query=True, worldSpace=True, translation=True)[0]) < 0.001,
+                str(pm.xform(driven, query=True, worldSpace=True, translation=True)))
+
+    # -- constrain, remove, constrain again ------------------------------------------------------ #
+    harness.new_scene()
+    driver = pm.createNode('transform', name='driver')
+    driven = pm.createNode('transform', name='driven')
+    matrix_nodes.matrix_constraint(driver, driven)
+    matrix_nodes.remove_matrix_constraint(driven)
+    made = matrix_nodes.matrix_constraint(driver, driven)
+    suite.check('an object can be constrained again after being freed',
+                made['parent_constraint_group'] is not None)
+    driver.translate.set((0, 0, 6))
+    suite.check('and it follows',
+                abs(pm.xform(driven, query=True, worldSpace=True, translation=True)[2] - 6) < 0.001,
+                str(pm.xform(driven, query=True, worldSpace=True, translation=True)))
 
 
 # --------------------------------------------------------------------------------------- #
