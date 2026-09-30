@@ -35,6 +35,13 @@ class Suite(object):
 
         # Everything the launcher writes goes under the temp folder, so a test run cannot
         # touch the machine's real preferences or its installed dependencies.
+        #
+        # Put back in finish(). A suite run inside a live Maya - which is how the windowing
+        # suites have to run, a batch Maya having no QApplication - would otherwise leave that
+        # Maya pointed at a temp folder that is about to be deleted, and every process it starts
+        # afterwards inherits it.
+        self._environment_before = {name: os.environ.get(name) for name in
+                                    ('MCA_PREFS_ROOT', 'MCA_DEPS_ROOT', 'MCA_LOGS_ROOT')}
         os.environ['MCA_PREFS_ROOT'] = os.path.join(self.temp, 'prefs')
         os.environ['MCA_DEPS_ROOT'] = os.path.join(self.temp, 'deps')
         os.environ['MCA_LOGS_ROOT'] = os.path.join(self.temp, 'logs')
@@ -120,6 +127,12 @@ class Suite(object):
         for failure in self.failures:
             print('  FAILED  {}'.format(failure))
         print('  details: {}'.format(path))
+
+        for name, was in getattr(self, '_environment_before', {}).items():
+            if was is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = was
 
         if not keep_temp:
             shutil.rmtree(self.temp, ignore_errors=True)

@@ -13,11 +13,27 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,036 checks in 16 suites** so far. `utils/` is done, bar one deferred half.
+**1,080 checks in 17 suites** so far — 1,096 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/` and `pyqt/` are done, bar one deferred half of `camera_utils`.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
-zero - a machine without Maya is not a failure.
+zero — a machine without Maya is not a failure.
+
+One thing `mayapy` cannot do is make a window. A batch Maya starts a `QGuiApplication` of its own,
+Qt allows one application object per process, so a `QApplication` cannot be made and a `QWidget`
+cannot be built — and building one aborts the process outright rather than raising. The suites that
+make windows check everything they can without one and say so; to finish them, run them inside a
+Maya that has a window:
+
+```python
+import sys
+sys.path.insert(0, r'<this repository>/packages/mca-maya/tests')
+import run_in_maya
+run_in_maya.run('test_pyqt.py')      # or run_in_maya.run_all()
+```
+
+That puts this repository's packages ahead of whatever framework the Maya has loaded, forgets every
+`mca` module already imported, and catches the suite's exit so Maya does not take it as its own.
 
 The table is the record of what happened to each piece. Below it, a section per piece says
 what was wrong with the version it replaces, which is the part worth reading before touching
@@ -41,6 +57,7 @@ any of this.
 | `utils/uvpin_utils.py` | ported, 56 checks — `is_pin_valid` always answered True |
 | `utils/events.py` | ported, 55 checks — 661 lines to 427; pausing any of thirteen events was a TypeError |
 | `utils/camera_utils.py` → `utils/playblast.py` | half ported, 51 checks — the ubercam half is a cinematics tool, see below |
+| `pyqt/` | ported, 60 checks — the window class had its event handling written and none of it connected |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -658,3 +675,58 @@ What was wrong with the capture half:
 - A batch Maya has no viewport, so none of this can run there. Each function says so and answers
   empty rather than raising, which is what a build step wants; and the suite checks that, since it is
   all a batch Maya can check.
+
+## `pyqt/` — Qt in Maya
+
+Maya's interface *is* Qt, but it does not hand out Python objects for it. These three modules are
+the bridge: Maya's main window and menu bar, the dialogs, and the two window classes every Maya
+tool in the pipeline is built on.
+
+- **`MCAMayaWindow` had its event handling written and none of it connected.** Its `eventFilter`
+  calls `self.unregister_event(callback)` on close, and the class does not inherit
+  `MayaWindowEvents`, so it has no such method — while `MCAMayaQWidget`, twenty lines below, does.
+  The loop only stayed quiet because nothing could ever put anything in `self._callbacks`: the
+  methods that fill it are on the mixin the class was missing. The one window class most tools use
+  looked as though it cleaned up after itself and did not.
+- **A window that was never shown never cleaned up at all.** Qt sends no close event for one:
+  `QMainWindow.close()` on a hidden window answers True and sends nothing, where a plain `QWidget`
+  does send one — which is why the panel class appeared to work and the window class did not. A
+  tool that builds its window with `show_window=False`, registers a listener and throws the window
+  away left Maya calling into a destroyed Qt object on the artist's next click. There is a second
+  net on `destroyed` now, and a check for exactly that case. The `eventFilter` is gone; a
+  `closeEvent` override does the same job in a way a reader can follow.
+- **`self.events_register` was often never created.** `if events_register: self.events_register =
+  ... if events_register else None` — the inner conditional cannot be false inside the `if`, and
+  when the argument is False the attribute is simply not set, so the next `register_event` fails on
+  `if not self.events_register` with an `AttributeError` rather than making one.
+- **The default parent was worked out when the module was imported.** `parent=MAYA_MAIN_WINDOW` as
+  a default argument, where `MAYA_MAIN_WINDOW = ma_main_window.get_maya_window()` runs at import —
+  so every window ever made was parented to whatever Maya's main window was the first time anything
+  imported the module. `None` in a batch Maya; `None` in an interactive one too if the import
+  happened during start-up. `dialogs.py` did the same for every dialog's parent.
+- **Wrapping a C++ pointer looked for the class in the wrong module.** With no base class given,
+  `wrapinstance` read the object's class name off its `metaObject` and looked for it on `qtgui` —
+  and every widget class lives in `QtWidgets`, and has since Qt 5. The lookup never found anything,
+  so every wrapped object came back a bare `QWidget` whatever it was. Its fallback was
+  `from PySide.shiboken import wrapInstance`, a module that has not shipped since 2013, and the
+  branch beside it (`elif 'sip' in globals()`) could never run because `shiboken` is imported at the
+  top of the file. The whole thing sat inside a bare `except: pass`.
+- **A file dialog's style came from an option variable that is often unset.**
+  `optionVar(query='FileDialogStyle')` answers `0` for a variable nobody has written, and
+  `fileDialog2(dialogStyle=0)` is not a style Maya has — so on a fresh Maya profile the file dialogs
+  asked for something that does not exist.
+- **Nineteen of the twenty-two things in `ma_main_window` had no caller anywhere** — the workspace
+  controls, the time slider, the x-ray joints, the axis setup, the node editor manager, the
+  isolate-panel helpers, the UI suspension class. 491 lines became 192. The two things anything
+  calls are the main window and its menu bar.
+- `MCAMayaWindow` showed itself twice, passing `show_window` down to the base class and then calling
+  `show()` again. `register_import_event` was the only one of four not named after the event it
+  registers. Both remaining module docstrings described something else entirely — "Helper functions
+  for Blend nodes and shapes" and, for the third time in this package, "Module that contains the mca
+  decorators at a base python level".
+
+One fix to the harness came out of this: `Suite` redirects `MCA_PREFS_ROOT`, `MCA_DEPS_ROOT` and
+`MCA_LOGS_ROOT` into its temp folder, and now puts them back when it finishes. A suite run inside a
+live Maya used to leave that Maya pointed at a temp folder that was about to be deleted — and every
+process it started afterwards inherited it, which is how a later `mayapy` run came to be unable to
+find PyYAML.
