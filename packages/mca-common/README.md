@@ -26,7 +26,9 @@ Each piece lands finished rather than copied and marked for later.
 | `pyqt/common_windows.py`, `messages.py`, `file_dialogs.py` | ported, 26 checks |
 | `pyqt/` (menus, movies, highlighter, widget helpers) | ported, 29 checks — **pyqt done** |
 | `utils/` (lists, dicts, strings, methods, pyutils, timedate) | ported, 51 checks |
-| `utils/` (folders, process, prefvars, project, pymaths, sounds, video) | next |
+| `utils/` (process, sounds, video) | ported, 41 checks |
+| `utils/folders.py`, `project.py`, `prefvars.py` | **dropped** — see below |
+| `utils/pymaths.py` | next |
 | source control (`p4v`, `plasticscm`) | to do — behind one interface |
 | `tools/` | to do |
 | `animlib`, `assetlist`, `modifiers` | to do |
@@ -310,6 +312,67 @@ of `:05` — in two places, the third and fourth time that same line has turned 
 its `else` branch had never run. It uses the standard library's `zoneinfo` now and falls back
 to `pytz` only where `zoneinfo` is missing (Python 3.7, which is Maya 2022) — the old version
 imported `pytz` at module scope, a package nothing installs.
+
+## The machine: processes, sounds and video
+
+```python
+from mca.common.utils import process, sounds, video_utils
+
+process.is_running('cm.exe')
+process.run_on_thread(send_the_tracking_event)
+sounds.warning()
+video_utils.ffmpeg_convert_to_mp4(playblast)
+```
+
+`process` answered `False` from two functions documented to answer a list, on the no-psutil
+path the guard existed to protect — so `for p in get_processes_by_name(...)` raised
+`TypeError` there. Worse, the one function anything actually called was the one with no
+`AccessDenied` guard, although the function directly above it had one: enumerating processes
+on Windows raises about system processes as a matter of course. The two also disagreed about
+what "by name" means — one compared for equality, the other for a substring — so
+`find_by_name` now says which it is doing.
+
+`cpu_threading` started a **non-daemon** thread with nothing catching exceptions and returned
+nothing: a failure printed to a stream nobody reads, the caller could not wait for the work or
+know it had happened, and the thread held the process open at exit. `run_on_thread` logs what
+went wrong, hands the thread back, and does not keep Maya from closing.
+
+`sounds` **no longer ships or needs any sound files.** It played eight `.wav`s out of a depot
+folder, six of them Windows' own system sounds copied in — `Windows Error.wav`,
+`Windows Critical Stop.wav`, `Windows Battery Low.wav` — which is the icons' licence problem
+again, and for those six unnecessary: `MessageBeep` plays the user's own sound scheme, and
+stays quiet when they have muted it. It also handed the file name to `PlaySound` without
+`SND_FILENAME`, so Windows looked it up as a *registry sound alias* first and only then as a
+file, and with the sounds folder unset it was passed a bare name — what an artist heard
+depended on the machine. A project that wants its own sound still passes a file name;
+a missing file is silence, because no tool should fail for want of a noise.
+
+`video_utils` formatted one long string and ran it with `shell=True`, so **a path with a space
+in it broke every conversion** — `shot 01 playblast.mov`, or anything under `My Documents`,
+reached ffmpeg as several arguments. It also ignored ffmpeg's exit code, so the only report of
+a failure was `FileNotFoundError` about the output file, saying nothing about the cause. It
+passes an argument list now, logs what ffmpeg said, uses `-y` rather than deleting the old
+file first, and asks Windows not to flash a console window up in front of Maya.
+
+ffmpeg itself is not bundled — it is GPL — and is found from `MCA_FFMPEG_EXE`, then a
+project copy, then `PATH`.
+
+## What is not coming across
+
+`folders.py` held one function, `get_files`, which nothing in the framework imports — and its
+two branches disagreed: the recursive one walked with `os.walk` and returned files, the flat
+one filtered `os.listdir` and returned **directories too**, from a function called `get_files`.
+
+`project.py` was ten lines of section comments and no code.
+
+`prefvars.py` was a 217-line preference-variable system with a singleton registry, JSON
+save/load and a docstring explaining how to subclass it. Nothing subclasses it and nothing
+imports it, anywhere in the framework, and it had never worked: the defaults and names were
+kept on **class** attributes of the base, so every subclass would have shared one dictionary;
+`reset()` looked defaults up by attribute name while they were stored under the declared
+`name`, a `KeyError` for any var that renamed itself; and the duplicate check called
+`set.union` and threw the result away, so it could never find a duplicate. Preferences are
+the launcher's `.pref` files and `QSettings` now.
 
 ## Tests
 
