@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**874 checks in 13 suites** so far.
+**930 checks in 14 suites** so far.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -38,6 +38,7 @@ any of this.
 | `utils/material_utils.py` | ported, 61 checks — three ways to crash the shader build |
 | `utils/scene_utils.py` | ported, 49 checks — backups went to a hard-coded `C:\export_backup` |
 | `animation/time_utils.py`, `utils/fbx_utils.py` | ported, 57 checks — a real FBX round trip; 506 lines to 289 |
+| `utils/uvpin_utils.py` | ported, 56 checks — `is_pin_valid` always answered True |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -545,3 +546,31 @@ otherwise very hard to account for after the fact.
 The FBX half of the suite is a real round trip: a mesh and an animated transform written out
 through Maya's own plugin, read back into an empty scene, and checked for their positions, their
 keys and their namespace.
+
+## `utils/uvpin_utils.py`
+
+This one came over almost as it was. It is recent work — its constants are named, its side effects
+are written down, and its pin coordinates are restored in `finally` — and there was little to find
+by reading. What the suite found is another matter:
+
+- **`is_pin_valid` always answered True**, and every sampling function in the module is built on
+  it. It looked for an all-zero output matrix, on the stated grounds that "a coordinate outside
+  every UV shell makes the pin output an all zero matrix, so the first row collapses to zero
+  length". Maya does not do that: it answers with the **identity**, whose first row is `(1, 0, 0)`
+  — and that passed the "is this row longer than nothing" test as readily as a real normal. So
+  `find_uv_extent` walked to the 0 or 1 limit whatever the shell actually was,
+  `get_uv_shell_extents` reported the whole map, and `get_uv_shell_rect` never shrank anything. The
+  suite proves this with a plane whose UVs are squashed into a quarter of the map: the walk now
+  stops at the shell edge.
+- `create_planar_uv_set` raised `pm.MayaNodeError` when no face around the given point could be
+  projected. That exception is Maya's for "there is no such node", and a caller catching it to
+  handle a missing mesh would have swallowed this instead.
+- `get_visible_region_faces` tested its `radius` for truth rather than for `None`, so a radius of
+  `0` — the seed face and nothing else — was read as no radius at all and the region grew over the
+  whole mesh.
+- The occlusion test read `hit[3]`, the hit *triangle*, where the face index is `hit[2]`. It came
+  to the same answer, but it was checking a number it did not mean.
+
+Two modules read pins through this — `rigging/frag/uv_slide_component.py` and
+`rigging/templates/familiar_template.py` — and both were being told every shell is the whole UV
+map. Worth looking at what they do with the real answer when they are ported.
