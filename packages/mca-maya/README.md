@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,080 checks in 17 suites** so far — 1,096 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/` and `pyqt/` are done, bar one deferred half of `camera_utils`.
+**1,173 checks in 18 suites** so far — 1,189 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -58,6 +58,7 @@ any of this.
 | `utils/events.py` | ported, 55 checks — 661 lines to 427; pausing any of thirteen events was a TypeError |
 | `utils/camera_utils.py` → `utils/playblast.py` | half ported, 51 checks — the ubercam half is a cinematics tool, see below |
 | `pyqt/` | ported, 60 checks — the window class had its event handling written and none of it connected |
+| `animation/` — `keyframes.py`, `baking.py`, `anim_curves.py`, `anim_layers.py` | ported, 93 checks — baking without rotation zeroed every static rotation |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -730,3 +731,85 @@ One fix to the harness came out of this: `Suite` redirects `MCA_PREFS_ROOT`, `MC
 live Maya used to leave that Maya pointed at a temp folder that was about to be deleted — and every
 process it started afterwards inherited it, which is how a later `mayapy` run came to be unable to
 find PyYAML.
+
+## `animation/` — keys, baking, curves and layers
+
+Four modules, and the third and fourth are where the pipeline's animation actually lives:
+`anim_curves.py` moves keys between curves, and `anim_layers.py` takes a layered animation off an
+object and puts it back. Maya stores layered animation as a chain of blend nodes rather than as
+anything you can copy, so "store this flag's animation" means walking that chain, duplicating it
+node by node, and stitching the copy back together — which is what most of `anim_layers` is.
+
+- **Baking without rotation zeroed every static rotation.** `bake_objects` finishes with an Euler
+  filter, and the filter step ran whatever the caller had asked for: it keyed `rotate` to 0 at
+  frame -1337 on every node in the list, filtered, then cut the key again. On a node whose rotation
+  was *not* being baked and carried no rotation keys, that made a one-key rotation curve worth
+  zero, and cutting its only key left the attribute reading back the only value it had ever
+  evaluated to. Checked in a real Maya: a transform sitting at `rotateY = 45`, baked with
+  `rotate=False`, comes back at `0.0`. Eighteen call sites bake; the ones that pass `rotate=False`
+  were flattening rotations every time. The filter now runs only when rotation was baked, and only
+  over nodes that have rotation curves.
+- **The filter's anchor frame cut keys on other channels.** -1337 is outside the range until
+  somebody's shot starts at -2000 — and `preserveOutsideKeys`, which is the default, means keys out
+  there are kept on purpose. The anchor was then removed with a bare `cutKey(node_list, t=-1337)`,
+  which names no attribute, so a real key at that frame on *any* channel went with it. Checked the
+  same way: a `translateX` key at -1337 is gone after a bake. The anchor now goes one frame before
+  the earliest key on the curves being filtered — which cannot collide by construction — and only
+  the rotation channels are cut.
+- **A nested animation layer lost whatever its parent did not also hold.**
+  `merge_all_animation_layers` gathered the attributes to bake from the base layer's *direct
+  children*. Animation layers nest, and a layer under one of those, holding an attribute its parent
+  does not hold, was never in that list — so it was never baked, and was then deleted along with
+  its parent. Checked against the old function: with `translateX` on the outer layer and
+  `translateY` on a layer nested under it, `translateY` read 9.0 before the merge and 1.0 after.
+  Every layer in the scene is collected now.
+- **A shift of zero meant "work it out for me".** `change_curve_start_time` tested
+  `if not shift_length`, so a caller asking for no shift — and two of them compute it as
+  `0 - start_frame` — fell into the branch that moves the animation to frame 0 instead. Then, when
+  the animation already began at zero and so needed no shift, it logged *"No keyframes were shifted
+  as none were found"*, which is not what happened.
+- **A start frame of zero meant "no start frame"**, in `restore_for_anim_layers` and
+  `adjust_layers_timeline`, both of which tested `if start_time:` — so restoring an animation to
+  frame 0, which is the common case for a cinematic, put it back wherever it happened to be. And a
+  start frame that was not a whole number was ignored outright: `store_object_animation` tested
+  `isinstance(start_time, int)`, which is False for `12.0`.
+- **`reanimate_from_anim_curves` raised on an end time given without a start time.** It entered its
+  trimming branch on `if end_time:` and then compared every key against `start_time`, which is
+  `None` by default: `TypeError: '<' not supported between 'float' and 'NoneType'`. It could not
+  trim on a start time alone either. It shares `crop_one_curve` with `crop_time_range` now, which
+  also means it inherits that function's refusal to crop a curve down to nothing — Maya deletes an
+  emptied curve, and the next line here connects it.
+- **Restoring onto an attribute that already had curves could do nothing at all.** In
+  `restore_for_anim_layers`, the branch that merges into existing animation only connected the
+  stored network *inside* `if base_curves:` — so a stored network whose base layer held no curve
+  left the object with its old animation and the whole stored chain orphaned in the scene. And only
+  the existing curves that were actually merged into the stored network are deleted now; the rest
+  are animation nobody else has a copy of.
+- **Two functions answered `None`, and their answers are iterated.** `map_anim_layers` returns
+  `None` when handed anything that is not a blend node, and it is iterated in four places;
+  `create_anim_layer_network` returns `None` when there is nothing to duplicate, and its one caller
+  does `attr_curves.update(...)` with the answer.
+- **`adjust_layers_timeline` reported the last curve's end frame**, not the latest one, so the end
+  frame handed back depended on the order Maya happened to list the curves in.
+- **`connect_layer_dagSetMembers` added the same attribute to a layer twice.** It walked
+  `dagSetMembers` looking for a free index without first checking whether what it was about to add
+  was already in there, so restoring twice onto the same flag left the layer holding two entries
+  for one attribute. Its `while` loop also had no bound at all.
+- **Four places indexed a list that can be empty**: the first key of a curve with no keys
+  (`change_curve_start_time`, `restore_from_anim_curves`, `store_object_animation`), the first plug
+  of a curve that drives nothing, the last blend node of an empty map, and `key_time[0]` in
+  `replace_into_curve`.
+- `restore_from_anim_curves` only answered with an end frame when it had been given an offset,
+  though its caller uses the answer either way; it now always reports the curve's last key. Its
+  `start_time` argument was never a start time — its one caller passes the output of
+  `get_start_time_diff` — so it is called `time_offset`, which is what it does.
+- `get_objects_in_anim_layer` had no callers anywhere in the pipeline. Gone. It is the only dead
+  function in `anim_layers`: twenty-six of its twenty-seven are reachable from the two entry points,
+  which is unusual for this codebase and worth saying.
+- `multiply_curve_values` iterated `None` on a curve with no keys, and asked for a key's value with
+  `t=frame` rather than a time range. `update_connections_dict` had its two halves written out
+  twice, byte for byte. Several log messages were built with `.format` rather than left to the
+  logger, and one of them read "There is not Base Layer in the scene."
+
+**One caller to rewire when its module is ported.** `rigging/frag/animated_curves.py` calls
+`restore_from_anim_curves(..., start_time=...)`; the argument is `time_offset` now.
