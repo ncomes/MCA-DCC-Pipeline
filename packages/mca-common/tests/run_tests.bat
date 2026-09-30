@@ -1,12 +1,12 @@
 @echo off
-REM Run every launcher suite.
+REM Every suite in this folder, with whatever Python is given or found.
 REM
 REM     run_tests.bat                                  uses py -3, then python
 REM     run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 REM
 REM Maya's mayapy is a good choice on a machine with no other Python 3: it has PySide6, so
-REM the window suite runs rather than skipping.
-setlocal
+REM the suites that draw run rather than skipping.
+setlocal enabledelayedexpansion
 set PYTHON=%~1
 if "%PYTHON%"=="" (
     where py >nul 2>nul && set PYTHON=py -3
@@ -20,10 +20,10 @@ if "%PYTHON%"=="" (
 )
 
 set FAILED=0
-for %%S in (test_core.py test_api.py test_ui_window.py) do (
+for %%S in ("%~dp0test_*.py") do (
     echo.
-    echo === %%S ===
-    %PYTHON% "%~dp0%%S" || set FAILED=1
+    echo === %%~nxS ===
+    %PYTHON% "%%~fS" || set FAILED=1
 )
 
 echo.

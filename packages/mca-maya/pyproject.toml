@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mca-maya"
+version = "3.0.0"
+description = "The Maya half of the MCA pipeline: rigging, skinning, face, animation export and the tools around them."
+readme = "README.md"
+requires-python = ">=3.7"
+license = "MIT"
+authors = [{ name = "Nathan Comes" }]
+keywords = ["maya", "pipeline", "rigging", "skinning", "animation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+
+# Python 3.7 is the floor because Maya 2022 is 3.7.7.
+#
+# Nothing Maya ships is listed here - not maya.cmds, not maya.api.OpenMaya, not pymel.
+# They come with Maya, and pip would either fail to find them or install something that is
+# not them. Qt is not listed for the same reason as in mca-common: Maya has its own, and a
+# second one on sys.path is an abort with no traceback.
+dependencies = [
+    "mca-common>=3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ncomes/MCA-DCC-Pipeline"
+Source = "https://github.com/ncomes/MCA-DCC-Pipeline"
+
+[tool.setuptools.packages.find]
+include = ["mca*"]
+
+[tool.setuptools.package-data]
+"mca.mya" = ["*.yaml", "configs/**/*", "startup/**/*"]

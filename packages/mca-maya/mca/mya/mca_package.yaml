@@ -1,0 +1,26 @@
+# What this package is, and what it puts in the environment.
+#
+# {self} is the folder this file sits in, so a package can say where its own things are
+# without knowing where it was installed.
+#
+# The version this replaces pointed every path at '{self}/mca.mya/...' - with a dot where
+# the folder separator belongs. There has never been a folder called 'mca.mya', so every
+# variable this file set pointed at nothing, and nothing ever said so. The manifest reader
+# in mca-common now checks each entry against the disk and reports the ones that are not
+# there, which is how this was found.
+#
+# This describes the package as it is today, not as it will be: entries come back as the
+# pieces they point at are ported.
+
+name: 'mca-maya'
+displayName: 'MCA Maya'
+description: 'The Maya half of the MCA pipeline.'
+depotName: 'maya'
+version: '3.0.0'
+required: False
+
+environment:
+  MCA_MAYA_BASE_PATH: '{self}'
+  MCA_MAYA_PATHS:
+    - '{self}/utils'
+    - '{self}/modifiers'
