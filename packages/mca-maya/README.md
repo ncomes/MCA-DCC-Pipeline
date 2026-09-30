@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,278 checks in 19 suites** so far — 1,294 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`, and `modeling/` bar the three modules that need `rigging/` and `face/` first.
+**1,327 checks in 20 suites** so far — 1,343 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -61,6 +61,7 @@ any of this.
 | `animation/` — `keyframes.py`, `baking.py`, `anim_curves.py`, `anim_layers.py` | ported, 93 checks — baking without rotation zeroed every static rotation |
 | `modeling/` — `vert_utils.py`, `surface.py`, `geometry.py`, `follicle.py`, `blendshape_model.py` | ported, 104 checks — the closest point on a surface was answered with a position, not a parameter |
 | `modeling/rivets.py`, `modeling/face_model.py`, `modeling/blendshape_node.py` | waiting on `rigging/` and `face/` |
+| `rigging/matrix_nodes.py`, `rigging/ik_utils.py`, `rigging/space_switch_rig.py` | ported, 49 checks — building a space switch moved the control to its parent's origin |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -880,3 +881,41 @@ and it has been ported since; the manifest had not caught up.
 `get_closest_parameter_on_surface` with a world position and no space; the default is `world` now,
 so it wants no change — but it has been placing rivets by the wrong numbers, and every rig that
 uses one should be looked at once `rivets.py` lands.
+
+## `rigging/` — the leaves first
+
+`rigging/` is the biggest folder in the package and everything else in it depends on `flags/`,
+`chain_markup` and `joint_utils`, which depend on each other. So it starts at the three modules
+that depend on nothing: the matrix constraint, the pole vector maths, and the space switch.
+
+- **Building a space switch moved the control to its parent's origin.** The offset group is made
+  at the control's world position, parented under the control's old parent — so its own local
+  values become the control's — and the control is then parented under it, which zeroes the
+  control's channels. The two lines after that set the group's translate and rotate to zero,
+  which throws the offset away and takes the control with it. Checked in a real Maya: a control
+  at `(1, 2, 3)` is at the origin once a space switch has been built on it. It has gone unnoticed
+  because a flag normally sits at zero under an align group, where those two lines do nothing —
+  but anything switched in place moved, silently, at build time.
+- **An even-numbered joint chain took its pole vector from the wrong pair of joints.** The middle
+  of a chain with no single middle joint is between the two either side of the centre — indexes 1
+  and 2 of four. The code used `len(joint_chain) // 2` and the one after it, which for four
+  joints is indexes 2 and 3: the joint past the middle, and the end joint. The pole vector came
+  out planted near the end of the limb rather than in front of its bend. Six of the seven callers
+  pass three joints, so it only shows on the seventh, which passes whatever chain it was handed.
+  A two-joint chain raised `IndexError` on the same arithmetic, and a chain folded flat — root
+  and end in the same place, which is a real pose for a curled finger — divided by zero and
+  answered `nan` for every component, which Maya accepts and which turns up much later as a
+  control nobody can select.
+- **A space switch's constraint weight was addressed by a name that is not always the alias.**
+  The weight was built as `'{target}W{index}'`, which is the alias only while the target's name
+  is a plain short name — a target inside a namespace has a different alias, and the connection
+  raised. Maya's own `getWeightAliasList` is asked now. Building a second switch on a control
+  also raised, because both `addAttr` calls went in unguarded and the channel box separator is
+  shared between switches; and a control with no parent raised on
+  `pm.parent(group, None)`.
+- `remove_matrix_constraint` had no callers anywhere, and left its two message attributes behind
+  on the object it unpicked while clearing the artist's selection on the way out. Gone — deleting
+  the constraint group by hand does the same thing. `matrix_nodes` also re-fetched a node from
+  the scene immediately after renaming it, which does nothing, and connected array attributes by
+  their bare names (`worldMatrix` rather than `worldMatrix[0]`), which works only because Maya
+  picks element zero for you.
