@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,605 checks in 23 suites** so far — 1,621 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,675 checks in 24 suites** so far — 1,691 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -67,6 +67,7 @@ any of this.
 | `rigging/flags/flag_mirror.py`, `rigging/flags/frag_flag.py` | ported, 96 checks — every imported flag came back drawn twice |
 | `rigging/flags/serialize_flag.py` | **dropped** — it wrote `.flag` files nothing can read back; see below |
 | `rigging/flags/flag_utils.py`, `rigging/flags/flag_api.py` | waiting on `frag/` |
+| `rigging/cog_chain_rig.py`, `world_chain_rig.py`, `reverse_chain_rig.py`, `ikfk_switch.py`, `fk_chain.py`, `multi_constraint_rig.py` | ported, 70 checks — an FK chain built without align transforms raised |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1161,3 +1162,47 @@ them, recorded here so it is not re-discovered:
   leaves out the fast path the other two have.
 - `flag_utils` puts up a modal dialog (`dialogs.info_prompt`) from inside a function a headless
   build calls.
+
+## The chain builders — the six that needed nothing from `rig_utils`
+
+Fourteen small modules in `rigging/` each build one kind of control setup, and seven of them
+imported `rig_utils` — for five functions, one of which (`create_align_transform`) has already moved
+into `utils/groups.py` and one of which (`find_primary_axis`) is already `dag.get_primary_axis`. The
+six that need none of the rest are here: the COG control, the world controls, the reverse chain, the
+FK chain, the IK/FK switch and the matrix multi-constraint.
+
+- **An FK chain built without align transforms raised.** The parenting step reads
+  `flag_node.alignTransform.get()` — the attribute directly — and a flag built with
+  `add_align_transform=False` does not have that attribute, so it is an `AttributeError` rather than
+  the `None` the surrounding `if` is written for. Both `root_align_transform=False` and
+  `children_align_transforms=False` reached it. It asks the flag now, which answers `None`.
+- **`reverse_chain`'s default suffix stripped every underscore out of the control's name.** The
+  label is `start_joint.nodeName().replace('_' + suffix, '')`, and `suffix` defaults to `''` — so
+  the replacement is `'_'` for nothing at all, and a joint called `l_ankle` gave a control called
+  `f_lankle`. Its one caller passes a suffix, which is why nobody has seen it.
+- **A second multi-constraint on the same control raised.** The enum went in with an unguarded
+  `addAttr`; the channel-box separator beside it *was* guarded, which is what makes the omission
+  look like an oversight rather than a decision. An empty target list raised on `target_list[0]`.
+- **One branch of `fk_joint_chain` could never run** — `elif create_end_flag and inc ==
+  len(chain_to_rig)`, and `enumerate` never yields an index equal to the length of what it is
+  walking. The end control was always built by the branch below, which is the same call with a
+  different align-transform argument. Gone, leaving the two cases that exist.
+- **`world_chain`'s `flags` entry left the offset control out**, though all three controls are built
+  and all three are locked the same way. Its one caller does not read that entry — it wires up the
+  three by name — so nothing depended on the omission, and all three are in it now.
+- `reverse_chain`'s refusal read *"There can be no joints between startJoint and endJoint"*, which
+  is what it requires rather than what went wrong, and was raised at the moment there *were* joints
+  between them. `multi_constraint` disconnected the `multMatrix`'s inputs by handing
+  `disconnectAttr` the parent of a multi rather than the elements that are connected, and connected
+  world matrices by their bare array names; its three `for x in range(len(target_list))` loops are
+  two, which is the fewest possible — every offset attribute has to exist before any is connected.
+  An FK chain of one joint with no end control builds nothing and now says so. All six assembled
+  their result dictionaries a line at a time; the magic numbers they carried — a rotate order of 2,
+  a scale of 0.85, an orientation of -90 — are named.
+
+**Still waiting on `rig_utils`.** `ik_chain` needs `create_line_between` and the two locator
+builders; `rfk_chain`, `rfk_stretch_chain` and `rig_aim_joint` need `create_locator_at_object`;
+`ribbon_setup` and `twist_setup` need `find_primary_axis`, which is `dag.get_primary_axis` — note
+that it answers a lower-case axis letter where `rig_utils` answered an upper-case one, so a caller
+comparing against `'X'` wants changing; `spline_ik_rig` needed only `create_align_transform` and is
+unblocked. `reverse_foot_rig` needs nothing from `rig_utils` and is next.
