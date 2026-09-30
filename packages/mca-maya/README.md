@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**1,449 checks in 21 suites** so far — 1,465 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
+**1,500 checks in 22 suites** so far — 1,516 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` has started with its leaves.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -63,6 +63,7 @@ any of this.
 | `modeling/rivets.py`, `modeling/face_model.py`, `modeling/blendshape_node.py` | waiting on `rigging/` and `face/` |
 | `rigging/matrix_nodes.py`, `rigging/ik_utils.py`, `rigging/space_switch_rig.py` | ported, 71 checks — building a space switch moved the control to its parent's origin |
 | `rigging/chain_markup.py`, `rigging/joint_utils.py`, `startup/configs/ma_consts.py` | ported, 100 checks — a joint could not be marked as not-exported |
+| `rigging/mesh_markup_rig.py` | ported, 51 checks — asking an untagged mesh anything raised; 510 lines to 396 |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1000,3 +1001,36 @@ reads `chain_data._invalid_joints` and `rigging/rig_utils.py` reads
 (`invalid_joints`, `animation_joints`). `startup/startup.py`,
 `startup/configs/ma_envs.py` and `startup/headless_startup.py` read `ma_consts.THRIDPARTY`, which
 is `THIRDPARTY`.
+
+## `rigging/mesh_markup_rig.py` — which mesh is which
+
+A character arrives as a bag of meshes — a head, two eyes, teeth, lashes, a body, a dozen blend
+shape targets — and a builder has to know which is which. Names do not answer that across two
+characters made by two people, so each mesh carries one string attribute holding a JSON
+dictionary: what kind of mesh it is, what category it belongs to, which side and region it is on,
+what it was made from.
+
+- **Asking an untagged mesh anything raised.** Every read goes through `get_dict`, which reads
+  `self.mesh.attr(MCA_MESH_MARKUP)` — and a mesh without the attribute has no such plug. So
+  `MeshMarkup(mesh).region` on a mesh nobody had tagged was an `AttributeError`, and there was no
+  way to ask "is this one of ours?" other than checking the attribute by hand first, which a
+  caller had to know to do. An untagged mesh answers an empty dictionary now, and `is_marked_up`
+  asks the question directly.
+- **Markup that was not valid JSON took the whole build down.** `json.loads` on a truncated or
+  hand-edited string raises, from inside a property read, half way through a rig build. It is
+  caught and reported against the mesh it came from.
+- **`set_dict` could not clear the markup** — `if mesh_dict:`, so writing an empty dictionary did
+  nothing at all and the mesh kept whatever it had.
+- **`get_mesh_markups()` with no argument wrapped the wrappers.** Its default was
+  `self.mesh_list`, which is already a list of `MeshMarkup`, so calling it that way built
+  `MeshMarkup(MeshMarkup(...))` — every read on which would then go looking for a Maya attribute
+  on a Python object. Nothing called it that way, and the default is gone.
+- **Two hundred lines of the module were the same ten lines twenty times over** — ten entries,
+  each with a getter and a setter that did nothing but name the entry. They are built from a
+  `MARKUP_ENTRIES` table now, which is also the only description of the schema this has ever had.
+  `get_region_dict` had no callers and `get_blendshape_region_dict` was the same function with one
+  `if` in it; one function with a `category` argument replaces both. `RigMeshMarkup.create` called
+  `hasAttr` on the result of `getParent()`, which is `None` for a shape at the scene root.
+
+**One caller to rewire when its module is ported.** `face/face_utils/face_build_utils.py` calls
+`get_blendshape_region_dict()`; it is `get_region_dict(category=BLENDSHAPE_CATEGORY)`.
