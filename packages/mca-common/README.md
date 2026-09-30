@@ -3,8 +3,15 @@
 What every DCC in the pipeline shares. Nothing here imports a DCC: it runs in Maya,
 MotionBuilder, Unreal, a standalone Python and the test suite.
 
-Being ported from the depot one piece at a time — read, brought over, cleaned, and checked.
-Each piece lands finished rather than copied and marked for later.
+**Ported.** Every piece was read, brought over, cleaned and checked, one at a time, each landing
+finished rather than copied and marked for later. 34,249 lines of depot became 31,092, with
+**936 checks in 27 suites** — run them with `tests/run_tests.bat` on Windows or
+`tests/run_tests.sh` anywhere. The suites need nothing but Python; the ones that draw need
+PySide and skip politely without it.
+
+The table below is the record of what happened to each piece. Below it, a section per piece says
+what was wrong with the version it replaces — which is the part worth reading if you are about to
+touch any of this.
 
 | piece | state |
 |---|---|
@@ -41,7 +48,8 @@ Each piece lands finished rather than copied and marked for later.
 | `animlib/` | ported, 71 checks |
 | `tools/assetregister` (11 modules) | ported, 27 checks |
 | `tools/doccrawler` → `tools/docgen` | ported, 38 checks — the scraping half **dropped** |
-| `tools/toolbox` | next — 6,475 lines |
+| `tools/toolbox` | ported, 46 checks — **mca-common done** |
+| `tools/toolbox/toolbox_migrate.py` | **dropped** — see below |
 
 ## Logging
 
@@ -818,6 +826,45 @@ quadratic on top of that.
 `maya.cmds` is not covered. The honest way to document it is `cmds.help(command)` from inside
 Maya, which is introspection rather than scraping, and it can be added beside this when
 something needs it.
+
+## The toolbox
+
+```python
+from mca.common.tools.toolbox import toolbox_api
+
+toolbox_api.add_item(section_id, 'Build A Rig', target='mca.mya.tools.buildarig:run')
+```
+
+The artists' tool palettes: editable in place, stored as YAML, shared through source control, with
+a headless API over the same library the window uses so a script, the in-DCC AI and the MCP tools
+all take one path. It is the best-kept subsystem in the package — not one unused import in 6,475
+lines — and most of it came across untouched.
+
+Two things were wrong.
+
+**Every edit to a shared toolbox failed on a machine without Perforce.** `ToolboxLibrary`
+defaulted its shared backend to `P4Backend()` outright, so `p4 fstat` came back "the p4 command
+line client is not installed", `prepare_edit` read that as a file it could not check out, and
+raised `ToolboxWriteError` into an error box — on a contractor's laptop, a build agent, or a
+studio that uses anything else. `toolbox_vcs.shared_backend()` asks
+`mca.common.sourcecontrol` now: Perforce where Perforce is set up, plain disk writes where it is
+not.
+
+**The broken-tool check called every tool broken.** `check_command` finds a module's file by
+walking `sys.path` without importing it — and skipped the empty entry, which is the current
+directory, and which is how the framework is on the path for every `python -m` run from the
+packages folder and every test run. So `mca.common.log` read as "module not found", and the
+toolbox showed the artist every tool as broken. Inside Maya the path is absolute, so it worked
+there and nowhere else.
+
+The toolbox keeps its own small backends rather than using the source control interface directly,
+and that is deliberate: what it needs is a file-writing lifecycle — prepare this file, tell me
+who else has it open, mark this deletion — where the interface does checkout, add and submit over
+a list of paths. It takes the connection details from the interface and leaves the rest alone.
+
+`toolbox_migrate.py` has not come across: 294 lines converting the legacy GUID-graph `.tbx` files
+into these sections and toolboxes. It has been run — the sections are on disk in the new format
+and there is not a `.tbx` file left in the depot — and it cannot happen twice.
 
 ## What is not coming across
 
