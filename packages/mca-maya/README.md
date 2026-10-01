@@ -84,6 +84,7 @@ any of this.
 | `modeling/rivets.py` | ported, 40 checks — attaching a transform to a surface built an evaluation cycle on its default arguments |
 | `rigging/frag/pin_component.py` | ported, 41 checks — the three control methods every component carried a copy of raised on a component with no controls |
 | `rigging/frag/attachment_component.py`, `space_switch_component.py`, `aim_component.py` | ported, 62 checks — two of the three recorded work that had not been done, and the third wiped joint labels |
+| `rigging/frag/twist_fixup_component.py`, `camera_component.py`, `s_sdk_component.py` | ported, 53 checks — one is at version 2 with no step to get there, one spells its version differently from every other component, and one recorded the driving node instead of the driving attribute |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -2111,3 +2112,64 @@ scene and handed the caller None.
 attachment point belongs to. Nothing in the pipeline reads either, and correcting them would make the
 attachment on every rig in the depot unreadable by this code, so they stay exactly as they are — with
 constants named for what they are, and a note saying why.
+
+## `twist_fixup_component`, `camera_component`, `s_sdk_component` — three more small ones
+
+A twist fix-up spreads a limb joint's twist across the helper joints that carry it, so a forearm does
+not shear at the wrist; it is the only component in `frag` with no controls at all. A camera component
+puts a camera on an FK control. A set driven key component writes down a relationship Maya keeps
+nothing but the curve for.
+
+- **`TwistFixUpComponent` is at version 2 and has no step to get there from version 1.**
+  `FRAGNode.update` builds the name of the step it needs from the two version numbers, and
+  `_update_version_1_to_version_2` exists nowhere in this class or any class it inherits from — so
+  every twist component built by the version that wrote 1 raises `AttributeError` the moment anything
+  asks it to update, and `update_all_frag_nodes` walks a whole rig. This is the sixth component found
+  with a version problem, and the first where the *step* rather than the dispatch was missing. Nothing
+  about the node changed between the two versions as far as the file shows, so the step is written and
+  records the version and nothing else, with a docstring saying that is what happened.
+- **`CameraComponent` spells its version `LATEST_VERSION`**, so `CameraComponent.VERSION` is
+  `FKComponent`'s. Both are 1, which is the only reason nothing has gone wrong: the moment either
+  number moves, `update` compares the node's version against the *parent* class's and either does
+  nothing or looks for a step named from the wrong pair.
+- **`SingleSDKComponent` recorded the driving *node* and threw away which attribute it was.** `driver`
+  is set from `drive_attr.nodeName()`, and `drive_attr` is an attribute — so a component driven by
+  `f_jaw.openClose` recorded `f_jaw`, and nothing in the scene says which of that control's attributes
+  the curve hangs off. Remembering the relationship is the only thing this node exists for.
+- **Its default driver values are `(0, 0)`** — both ends at the same driver value, so the second key
+  lands on the first, the curve comes out flat, and a component built on the defaults does nothing and
+  says nothing. Both ends have to be given now, and the same value at both is refused.
+- **`driven_attrs` defaulted to None and was then indexed**, which is a `TypeError` rather than a word
+  about the argument that is missing.
+- **It took whatever was first on the driven attribute's connections as the curve.** A driven
+  attribute on a real rig usually has a constraint or a blend node on it too, and that is what went
+  into `animCurves`. It asks for animation curves.
+- **It renamed itself from its own current name rather than from its class**:
+  `rename('{0}_{1}_{2}'.format(node.pynode, side, region))`. The first one in a scene comes out right;
+  the second is `SingleSDKComponent1_center_jaw`, because Maya had already uniquified the name the
+  format string read.
+- **A twist joint with nothing two levels above it raised before the component existed.** The
+  alignment is `joint_list[0].getParent().getParent()`, the limb joint whose rotation is being spread,
+  and both of those answer None near the root of a skeleton. An empty joint list raised on
+  `joint_list[0]` before `twist_setup` could say what was wrong.
+- **A twist setup that could not be built left a component with nothing on it.** `twist_setup` answers
+  `(None, {})` for joints it cannot use — no parent joint to take the twist from, more joints than one
+  `multiplyDivide` can drive — and `create` returned the component anyway, with no `bindJoints` and
+  nothing connected, so a rig carried a twist component that twists nothing.
+- **A camera whose control has no free channel raised.** `parent_constraint_safe` answers None when
+  everything it would drive is locked, and that went straight into `connect_node`, which puts it
+  through `pm.PyNode` — and `pm.PyNode(None)` raises.
+- **Neither `CameraComponent.create` nor `SingleSDKComponent.create` took `**kwargs`**, so neither can
+  be handed a component's recorded argument list; `CameraComponent` also left `FKComponent`'s
+  `buildKwargs` block in place, most of which its own signature has no parameter for. Both take
+  `**kwargs` and record their own arguments.
+- `SingleSDKComponent` built its two compound attributes by hand with `addAttr(numberOfChildren=…)`,
+  which is a Maya error for an empty dictionary, and wrote each value as a *string*, so the numbers it
+  recorded came back as text. `set_compound_attribute_groups` does the whole block and keeps the
+  types. Six of the eight things the twist component records are single nodes written with
+  `connect_nodes`, which makes a list attribute out of something there is one of.
+
+**New on `RigComponent`: `remove`.** It existed only on `KeyableComponent`, so there was no way to take
+a component with no controls out of a rig — which is exactly what a component that cannot finish
+building needs in order not to leave itself behind. `KeyableComponent` extends it with its control
+group.

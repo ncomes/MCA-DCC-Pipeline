@@ -13,6 +13,10 @@ hangs off and the *objects* it is constrained to, separately and for translation
 separately. That is what lets a rig be taken apart and put back together, and what
 ``buildarig`` reads to rebuild an attachment.
 
+A component that cannot finish building has to be able to take itself back out of the scene, and
+there was no way to do that for a component with no controls: ``remove`` existed only on
+``KeyableComponent``. It is here, and ``KeyableComponent`` extends it with its control group.
+
 What was wrong before:
 
 - **Attaching a component twice left the objects from the first attachment registered as well.**
@@ -153,6 +157,17 @@ class RigComponent(frag_base.FRAGNode):
         """
 
         return self.pynode.attr(NO_TOUCH_ATTR).get()
+
+    def remove(self):
+        """
+        Take this component out of the rig: its group, everything in it, and its node.
+
+        ``KeyableComponent`` overrides this to take its control group as well. There was no way to
+        remove a component with no controls at all before, which is what a component that cannot
+        finish building needs in order not to leave itself behind.
+        """
+
+        pm.delete([self.no_touch_grp, self.pynode])
 
     def get_attachment_groups(self):
         """
