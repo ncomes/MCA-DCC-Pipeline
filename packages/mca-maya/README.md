@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**2,261 checks in 32 suites** so far — 2,277 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
+**2,292 checks in 33 suites** so far — 2,308 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -76,6 +76,7 @@ any of this.
 | `rigging/frag/frag_base.py`, `rigging/frag/__init__.py` | ported, 93 checks — no rig has ever been brought up to a new component version |
 | `rigging/frag/rig_component.py`, `rigging/frag/keyable_component.py` | ported, 57 checks — `align_component` has never aligned anything |
 | `rigging/frag/frag_root.py`, `skeletal_mesh.py`, `frag_rig.py`, `display_layers.py` | ported, 98 checks — reading a rig's scale rewired it; a rig build took other characters' geometry |
+| `rigging/frag/multi_constraint.py` | ported, 31 checks — a second space switch on a control raised something unreadable |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1673,3 +1674,39 @@ rig it belongs to except the component above it. And `DisplayLayers`' `layers` a
 *string* attribute with the layers' message plugs connected into it, which Maya allows; it works, but
 `merge_values` cannot tell a duplicate from a new entry on it, so a layer added twice would be
 connected twice. Nothing does that, because a layer is only added when the rig has none by that name.
+
+## `rigging/frag/multi_constraint.py` — the switch that lets a control follow one thing or another
+
+A hand should follow the arm most of the time, the chest when a character folds its arms, and the world
+when it rests on a table. That is a multi constraint: the control is matrix-constrained to one of a
+list of targets, an enum on it says which, and a pair of `choice` nodes swap the matrices over when the
+enum changes. `multi_constraint_rig` builds the network — already ported; this is the metadata node
+that remembers what was built, so the switch can be found, described and taken apart.
+
+- **Building a second switch on a control raised something unreadable.** The builder refuses when the
+  control already carries the enum — it logs why and answers a result with nothing in it — and `create`
+  then connected those empty slots straight to the node, so what the caller actually saw was
+  `MayaNodeError` out of `pm.PyNode(None)`. Same for a switch given no targets. It checks the build
+  worked and says what happened now.
+- **`remove` raised when there was nothing to put back.** It reparents whatever the control's group
+  held with `pm.parent(pm.listRelatives(group), parent_group.getParent())` — and when the group is
+  empty *and* the group above it sits at the world root, that is `pm.parent` with no arguments left at
+  all, which falls back to the selection and raises `TypeError: Error retrieving default arguments`. A
+  switch whose control has been deleted is exactly that pair of nothings.
+- **`remove` raised on a node whose switch or source object had gone**, both being message
+  connections that can answer nothing, and **deleted `sourceMultiConstraint` without checking it was
+  there** while guarding every other attribute in the same list with `hasAttr`.
+- **`get_build_kwargs` was the third copy of itself**, which its own docstring admitted and left for
+  later: `RigComponent` had one, this had one, and `SkeletalMesh` writes the attribute and had no
+  reader at all. It is on `FRAGNode` now, where all three inherit it.
+- The separator the enum sits under was the bare string `'__'` here and `SEPARATOR_ATTR` in the module
+  that puts it there; the six nodes a switch is made of were six near-identical `connect_node` lines;
+  and a `# strip wrapped nodes` comment sat above a line that strips nothing.
+
+**A correction worth recording, because it is the kind of thing that gets "tidied" wrong.** I first
+read `remove`'s single `pm.delete(group, node, multiMatrix, decompMatrix)` as the fault that
+`matrix_nodes.remove_matrix_constraint` had — Maya's delete following history and taking later names
+with it — and split it into separate deletes. Maya disagreed: the one call is fine, and deleting those
+nodes *one at a time* is what fails, because by the third delete the component's own node has gone
+with them. The suite pins that down, so the next reader who finds a four-node delete ugly finds out
+why it is one call before they change it.

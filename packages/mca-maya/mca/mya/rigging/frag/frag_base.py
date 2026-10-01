@@ -97,6 +97,12 @@ IS_FRAG_ROOT_ATTR = 'isFragRoot'
 SIDE_ATTR = 'side'
 REGION_ATTR = 'region'
 
+#: The compound attribute a node records the arguments it was built with in.
+BUILD_KWARGS_ATTR = 'buildKwargs'
+
+#: A build argument whose name ends in this is not one to hand back to a rebuild.
+HIDDEN_KWARG_SUFFIX = '_hidden'
+
 
 def as_pynode(node):
     """
@@ -655,6 +661,30 @@ class FRAGNode(metaclass=FRAGNodeRegister):
         """
 
         return self.pynode.attr(attr_name).get()
+
+    def get_build_kwargs(self):
+        """
+        The arguments this node was built with, as far as it recorded them.
+
+        Three classes wanted this and two of them had their own copy of it - ``RigComponent`` and
+        ``MultiConstraint``, which cannot inherit from each other - while ``SkeletalMesh`` wrote the
+        attribute and had no reader at all. It is here because anything that records how it was
+        built records it the same way.
+
+        :return: ``{argument name: value}``, without the ones marked as not for a rebuild.
+        :rtype: dict
+        """
+
+        if not self.pynode.hasAttr(BUILD_KWARGS_ATTR):
+            return {}
+
+        build_kwargs = {}
+        for attribute in self.pynode.attr(BUILD_KWARGS_ATTR).children():
+            attr_name = attribute.attrName()
+            if attr_name.endswith(HIDDEN_KWARG_SUFFIX):
+                continue
+            build_kwargs[attr_name.replace('{0}_'.format(BUILD_KWARGS_ATTR), '')] = attribute.get()
+        return build_kwargs
 
     def get_namespace(self):
         """

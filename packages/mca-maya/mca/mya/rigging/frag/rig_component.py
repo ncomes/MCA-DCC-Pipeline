@@ -86,13 +86,6 @@ ORIENT_PARENT_OBJECTS_ATTR = 'orientParentObjects'
 ATTACHMENT_ATTRS = (POINT_PARENT_ATTACHMENTS_ATTR, POINT_PARENT_OBJECTS_ATTR,
                     ORIENT_PARENT_ATTACHMENTS_ATTR, ORIENT_PARENT_OBJECTS_ATTR)
 
-#: The compound attribute a component stores the arguments it was built with in.
-BUILD_KWARGS_ATTR = 'buildKwargs'
-
-#: A build argument whose name ends in this is not one to hand back to a rebuild.
-HIDDEN_KWARG_SUFFIX = '_hidden'
-
-
 class RigComponent(frag_base.FRAGNode):
     """
     One piece of a rig: its ``NO_TOUCH`` group, its markup, and what it is attached to.
@@ -318,25 +311,3 @@ class RigComponent(frag_base.FRAGNode):
         """
 
         return self.pynode.attr(ORIENT_PARENT_OBJECTS_ATTR).get()
-
-    # ----------------------------------------------------------------------------------- #
-    # how it was built
-    # ----------------------------------------------------------------------------------- #
-    def get_build_kwargs(self):
-        """
-        The arguments this component was built with, as far as it recorded them.
-
-        :return: ``{argument name: value}``, without the ones marked as not for a rebuild.
-        :rtype: dict
-        """
-
-        if not self.pynode.hasAttr(BUILD_KWARGS_ATTR):
-            return {}
-
-        build_kwargs = {}
-        for attribute in self.pynode.attr(BUILD_KWARGS_ATTR).children():
-            attr_name = attribute.attrName()
-            if attr_name.endswith(HIDDEN_KWARG_SUFFIX):
-                continue
-            build_kwargs[attr_name.replace('{0}_'.format(BUILD_KWARGS_ATTR), '')] = attribute.get()
-        return build_kwargs

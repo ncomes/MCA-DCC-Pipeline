@@ -253,12 +253,15 @@ def check_attaching(suite, pm, frag_base, rig_component, keyable_component, clas
 def check_build_kwargs(suite, pm, frag_base, rig_component, keyable_component, classes):
     from mca.mya.utils import attr_utils
 
+    # The reader lives on FRAGNode: RigComponent and MultiConstraint each had their own copy, and
+    # SkeletalMesh wrote the attribute with no reader at all.
+
     harness.new_scene()
     component = classes['SupportComponent'].create(None, 'SupportComponent', 1, 'left', 'arm')
     suite.check('a component that did not record what it was built with answers nothing',
                 component.get_build_kwargs() == {}, str(component.get_build_kwargs()))
 
-    attr_utils.set_compound_attribute_groups(component.pynode, rig_component.BUILD_KWARGS_ATTR,
+    attr_utils.set_compound_attribute_groups(component.pynode, frag_base.BUILD_KWARGS_ATTR,
                                              {'scale': 2.5, 'create_sub_flags': True,
                                               'something_hidden': 7})
     build_kwargs = component.get_build_kwargs()

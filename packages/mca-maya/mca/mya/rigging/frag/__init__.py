@@ -32,6 +32,7 @@ COMPONENT_MODULES = (
     'display_layers',
     'rig_component',
     'keyable_component',
+    'multi_constraint',
 )
 
 
