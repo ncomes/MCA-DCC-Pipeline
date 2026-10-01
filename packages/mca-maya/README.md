@@ -60,7 +60,7 @@ any of this.
 | `pyqt/` | ported, 60 checks — the window class had its event handling written and none of it connected |
 | `animation/` — `keyframes.py`, `baking.py`, `anim_curves.py`, `anim_layers.py` | ported, 93 checks — baking without rotation zeroed every static rotation |
 | `modeling/` — `vert_utils.py`, `surface.py`, `geometry.py`, `follicle.py`, `blendshape_model.py` | ported, 104 checks — the closest point on a surface was answered with a position, not a parameter |
-| `modeling/rivets.py`, `modeling/face_model.py`, `modeling/blendshape_node.py` | waiting on `rigging/` and `face/` |
+| `modeling/face_model.py`, `modeling/blendshape_node.py` | waiting on `face/` and `rigging/flags` |
 | `rigging/matrix_nodes.py`, `rigging/ik_utils.py`, `rigging/space_switch_rig.py` | ported, 71 checks — building a space switch moved the control to its parent's origin |
 | `rigging/chain_markup.py`, `rigging/joint_utils.py`, `startup/configs/ma_consts.py` | ported, 100 checks — a joint could not be marked as not-exported |
 | `rigging/mesh_markup_rig.py` | ported, 51 checks — asking an untagged mesh anything raised; 510 lines to 396 |
@@ -81,6 +81,8 @@ any of this.
 | `rigging/frag/ik_component.py`, `fk_component.py`, `ikfk_component.py` | ported, 93 checks — building a limb wiped the Maya joint labels off the joints it drives, and `offset_flag=True` had never worked |
 | `rigging/frag/mesh_component.py` | ported, 49 checks — the one function that reads a mesh component back has never answered correctly |
 | `rigging/frag/world_component.py`, `cog_component.py`, `pelvis_component.py`, `clavicle_component.py` | ported, 84 checks — a COG's fallback could never reach its last choice, and a clavicle looked its chain up with an attribute object |
+| `modeling/rivets.py` | ported, 40 checks — attaching a transform to a surface built an evaluation cycle on its default arguments |
+| `rigging/frag/pin_component.py` | ported, 41 checks — the three control methods every component carried a copy of raised on a component with no controls |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1996,3 +1998,62 @@ joint side label when a joint has no `skelSide`, and that label always has a val
 `center`, on a joint nothing has labelled. So in `matching_chain` the side almost never falls through
 to the component's own, while the region often does: a component built for the left, over joints
 carrying no markup, looks up the *centre* chain. That is in `matching_chain`'s docstring now.
+
+## `modeling/rivets.py` and `rigging/frag/pin_component.py` — riding the geometry
+
+Everything else in a rig is driven by a hierarchy. A rivet is driven by the geometry: a transform that
+follows a point on a mesh or a surface, so it travels with the skinning and the blendshapes under it.
+The face rig is built on them, because a face control has to remember *where on the head* it belongs
+as a UV coordinate — a position in space is no use across two different heads. `PinComponent` is the
+FRAG component around one: a control pinned to a mesh, driving one joint.
+
+- **`BasicRivet.attach_to_surface` built an evaluation cycle on its default arguments.** It passes the
+  transform it is given into the constructor, which makes that transform *the rivet* — and then, when
+  `constraint` is true, which is the default, it builds a locator, parents the locator under the
+  rivet, and parent constrains the transform to it. The transform is the rivet, so it is constrained
+  to its own child. Checked in a real Maya: the transform lands nowhere near the surface and
+  `cycleCheck` names the plugs. The `else` branch beside it, `if transform != rivet.rivet:
+  pm.parent(…)`, could never be true for the same reason. The two cases are now what they were clearly
+  meant to be — with a constraint the surface drives a rivet of its own and that rivet drives the
+  transform, which keeps its place in the hierarchy; without one the transform *is* the rivet — and the
+  suite asserts `cycleCheck` is clean for both.
+- **`BasicRivet` wired its surface reader to nothing when it was handed a transform.** It asked
+  `pm.objExists('{}.worldSpace'.format(self._surface))` — string building to ask what `hasAttr`
+  answers — and `worldSpace` is on the *shape*. So for a surface's transform, which is what
+  `attach_to_surface` is handed and passes straight through, both that test and the `outputSurface`
+  one below it were False and the reader got no input at all. It resolves the shape first.
+- **This is the caller the `surface.py` fix was for.** `get_closest_parameter_on_surface` read
+  `closestPoint`'s answer as `(uv, _, _)` when it is `(point, u, v)`, so every rivet attached to a
+  surface without an explicit UV was placed by the closest point's X and Y where it wanted U and V.
+  That was fixed when `modeling/surface.py` was ported; this module needed no change for it, and the
+  suite now pins the round trip. **Any rig carrying a surface rivet built before that fix is in the
+  wrong place.**
+- **`MatrixRivet` is gone.** A third mechanism — two mesh edges lofted into a surface, a
+  `pointOnSurfaceInfo` on the loft, a four-by-four matrix built from its normal and tangents, seven
+  nodes in all. Nothing in the pipeline has ever called it, and the usage example in its own docstring
+  calls `model.get_two_edges_from_close_object`, which exists in no module anywhere — so the one
+  record of how to use it does not run either. `create_uv_pin` does the same job on a mesh with one
+  node. Its `set_uv` also carried an unexplained `if u >= 1: u = u - 1`, which is the shape of a bug
+  worked around rather than found.
+- `create_uv_pin` reported a mesh with no shape through the standard library's root logger —
+  `logging.warning`, not `log.MCA_LOGGER` — so the one thing it ever says went somewhere nobody is
+  reading, unformatted and without naming the mesh. Its `if not isinstance(obj, pm.nt.Transform): obj
+  = pm.PyNode(obj)` reads as a guard that the object is a transform and is not one: a shape stays a
+  shape through `PyNode`, and the next line sets `inheritsTransform` on it.
+- `connect_uv_pin` had two naming schemes in one function — splitting the locator's name and swapping
+  the first word for `uvpin` when the caller passed no name, and `<name>_uvpin` when it did — and
+  answered a one-entry dictionary of *strings* keyed by the locator's name, which a caller has to look
+  both nodes up again from. It answers the two nodes.
+- **The three methods an animator's tools call on a component — `select_flags`, `key_flags`,
+  `to_default_pose` — were written out character for character in component after component, and none
+  of the copies guarded an empty list.** `pm.setKeyframe([])` raises `TypeError: Not enough objects
+  for this command`, and `pm.select([])` *clears* the selection, which is not what asking to select a
+  component's controls means. All three are on `KeyableComponent` now, built on `get_flags`, which is
+  the one method a component has to answer for itself — and they guard.
+- `PinComponent` wrote `bindJoints`, `pinJoint` and `flags` with `connect_nodes` and a single node
+  each, making three list attributes out of three things there is exactly one of. It recorded `side`
+  and `region` among its build arguments, which are already the node's markup, and recorded the mesh
+  as a node, so a rebuild was tied to that mesh still existing under that name — where the thing a
+  rebuild actually cannot work out for itself, the UV, was not recorded at all. It is now. And a mesh
+  that cannot be pinned to left a half-built component and its two groups behind in the scene; the
+  component takes itself out again.

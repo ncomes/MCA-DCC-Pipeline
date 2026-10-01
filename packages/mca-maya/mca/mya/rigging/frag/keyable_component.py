@@ -6,6 +6,14 @@ A keyable component is a :class:`~rig_component.RigComponent` with controls: it 
 anything once a component has both controls and joints - baking the controls onto the skeleton,
 being driven by a skeleton, and working out what there is to bake.
 
+The three things an animator does to a component's controls - select them, key them, put them back
+where they were built - are the same for every component, and differ only in which attribute the
+controls hang off. They are here, built on :meth:`KeyableComponent.get_flags`, which is the one
+method a component has to answer for itself. Component after component carried its own character-for
+-character copy of all four. None of those copies guarded an empty list, and
+``pm.setKeyframe([])`` raises while ``pm.select([])`` *clears* the user's selection - so a component
+with no controls either blew up or quietly deselected whatever they were working on.
+
 Two pieces of being driven by a skeleton are the same in every component that can be: finding the
 run of joints on the other skeleton that answers to this component's region and side, which is
 :meth:`KeyableComponent.matching_chain`, and driving a pole vector control, which has no joint of
@@ -46,6 +54,7 @@ from mca.mya.rigging import chain_markup
 from mca.mya.rigging import ik_utils
 from mca.mya.rigging.frag import frag_base
 from mca.mya.rigging.frag import rig_component
+from mca.mya.utils import attr_utils
 from mca.mya.utils import constraint
 
 
@@ -135,6 +144,61 @@ class KeyableComponent(rig_component.RigComponent):
         """
 
         pm.delete([self.no_touch_grp, self.flag_group, self.pynode])
+
+    def get_flags(self):
+        """
+        This component's controls. Every component that has any overrides this; which attribute
+        they hang off is the one thing that differs between them, and it is the only thing the three
+        methods below need to know.
+
+        :return: The controls, which for a bare keyable component is none.
+        :rtype: list
+        """
+
+        return []
+
+    def select_flags(self):
+        """
+        Select every control this component owns.
+
+        A component with no controls leaves the selection alone: ``pm.select([])`` *clears* it,
+        which is not what asking to select this component's controls means.
+
+        :return: The controls that were selected.
+        :rtype: list
+        """
+
+        flag_list = self.get_flags()
+        if not flag_list:
+            logger.warning('%s has no controls to select.', self.pynode)
+            return []
+        pm.select(flag_list)
+        return flag_list
+
+    def key_flags(self):
+        """
+        Set a key on every control this component owns.
+
+        :return: The controls that were keyed. A component with no controls keys nothing -
+            ``pm.setKeyframe([])`` raises ``TypeError: Not enough objects for this command``, which
+            every component's own copy of this method would have done.
+        :rtype: list
+        """
+
+        flag_list = self.get_flags()
+        if not flag_list:
+            logger.warning('%s has no controls to key.', self.pynode)
+            return []
+        pm.setKeyframe(flag_list)
+        return flag_list
+
+    def to_default_pose(self):
+        """
+        Put every control back where it was built.
+        """
+
+        for flag_node in self.get_flags():
+            attr_utils.reset_attrs(getattr(flag_node, 'node', flag_node))
 
     # ----------------------------------------------------------------------------------- #
     # the skeleton

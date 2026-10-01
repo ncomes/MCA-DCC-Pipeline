@@ -42,6 +42,7 @@ COMPONENT_MODULES = (
     'cog_component',
     'pelvis_component',
     'world_component',
+    'pin_component',
 )
 
 

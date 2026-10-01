@@ -302,28 +302,6 @@ class FKComponent(keyable_component.KeyableComponent):
             return None
         return frag_flag.Flag(offset_flag_node)
 
-    def select_flags(self):
-        """
-        Select every control this component owns.
-        """
-
-        pm.select(self.get_flags())
-
-    def key_flags(self):
-        """
-        Set a key on every control this component owns.
-        """
-
-        pm.setKeyframe(self.get_flags())
-
-    def to_default_pose(self):
-        """
-        Put every control back where it was built.
-        """
-
-        for flag_node in self.get_flags():
-            attr_utils.reset_attrs(flag_node.node)
-
     # ----------------------------------------------------------------------------------- #
     # the rig's scale
     # ----------------------------------------------------------------------------------- #
