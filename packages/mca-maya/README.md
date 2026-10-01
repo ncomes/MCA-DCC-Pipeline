@@ -85,6 +85,7 @@ any of this.
 | `rigging/frag/pin_component.py` | ported, 41 checks — the three control methods every component carried a copy of raised on a component with no controls |
 | `rigging/frag/attachment_component.py`, `space_switch_component.py`, `aim_component.py` | ported, 62 checks — two of the three recorded work that had not been done, and the third wiped joint labels |
 | `rigging/frag/twist_fixup_component.py`, `camera_component.py`, `s_sdk_component.py` | ported, 53 checks — one is at version 2 with no step to get there, one spells its version differently from every other component, and one recorded the driving node instead of the driving attribute |
+| `rigging/frag/channel_float_component.py` | ported, 51 checks — building the component emptied the dictionaries it was handed |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -2173,3 +2174,41 @@ nothing but the curve for.
 a component with no controls out of a rig — which is exactly what a component that cannot finish
 building needs in order not to leave itself behind. `KeyableComponent` extends it with its control
 group.
+
+## `rigging/frag/channel_float_component.py` — the channels that are not transforms
+
+A rig often needs an attribute that is not a transform: how open a visor is, how wet a creature looks,
+which of three weapons is drawn. An animator wants it on a control, and the exporter only carries what
+is on the skeleton — so each channel goes on the control and again on a joint, as a proxy attribute,
+with the control driving the joint. This component records the pair.
+
+The one thing worth knowing about the module is deliberate and easy to "fix" wrongly: the attribute it
+puts on the control to say *you belong to this component* is `fragChannelFloat`, not the `fragParent`
+every other component uses. The control already belongs to a component through `fragParent`, one
+message attribute holds one connection, and routing this through the same name would quietly steal the
+control from the component that built it. It says so now, in the module docstring and on the constant.
+
+- **Building the component emptied the dictionaries it was handed.** Each channel's six values are
+  read with `channel.pop(...)`, so the caller's dictionary comes back with nothing in it. A caller
+  that builds its descriptions once and uses them twice — two components off one description, a list
+  read out of a data file and reused — got an empty dictionary the second time and a `KeyError` on the
+  first `pop`. They are read, not taken, and the suite checks the descriptions survive.
+- **A channel description missing a key was a bare `KeyError` from inside a `pop`**, naming the key
+  and nothing else. A missing key takes the same default `create_channel_float_dict` uses.
+- **The version migration had never run**, like the other four, for the `frag_base` reason. It is
+  reachable now and the suite drives it: build, put the two attributes back under the capitalised
+  names version 1 used, set the version to 1, `update`, and check each is renamed *and still wired to
+  what it was wired to*.
+- **"Adding add_attr / remove_attr methods to this component is still outstanding" was a comment in
+  the file.** They are `add_channels` and `remove_channel`, and `create` is a thin wrapper over the
+  first, so there is one piece of code that adds a channel rather than two. `remove_channel` finds the
+  joint's copy by following the connection rather than by guessing at its name, which is what makes a
+  channel whose two names differ removable at all.
+- **Nothing could read the channels back.** The build arguments deliberately leave the channel list
+  out — the comment said the re-animator has no way to consume it — but every channel is in the scene,
+  on the two nodes the component points at. `get_channel_dicts` reads them back in the shape `create`
+  takes, so the round trip holds and a rebuild needs nothing stored. The suite drives that round trip
+  onto a second control.
+- `isinstance(x, pm.nt.general.Attribute)` reaches through two module names for `pm.Attribute`.
+  `keyable` was documented as setting whether the attribute is "keyable and hidden"; it sets keyable,
+  and a non-keyable attribute is not hidden.

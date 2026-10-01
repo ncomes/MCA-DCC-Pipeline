@@ -49,6 +49,7 @@ COMPONENT_MODULES = (
     'twist_fixup_component',
     'camera_component',
     's_sdk_component',
+    'channel_float_component',
 )
 
 
