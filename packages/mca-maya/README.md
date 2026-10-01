@@ -86,6 +86,7 @@ any of this.
 | `rigging/frag/attachment_component.py`, `space_switch_component.py`, `aim_component.py` | ported, 62 checks — two of the three recorded work that had not been done, and the third wiped joint labels |
 | `rigging/frag/twist_fixup_component.py`, `camera_component.py`, `s_sdk_component.py` | ported, 53 checks — one is at version 2 with no step to get there, one spells its version differently from every other component, and one recorded the driving node instead of the driving attribute |
 | `rigging/frag/channel_float_component.py` | ported, 51 checks — building the component emptied the dictionaries it was handed |
+| `rigging/frag/rfk_component.py`, `rfk_stretch_component.py` | ported, 64 checks — the stretchy one was a hundred and thirty lines of copy of the plain one, and both attached nothing unless the control and joint counts matched exactly |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -2212,3 +2213,55 @@ control from the component that built it. It says so now, in the module docstrin
 - `isinstance(x, pm.nt.general.Attribute)` reaches through two module names for `pm.Attribute`.
   `keyable` was documented as setting whether the attribute is "keyable and hidden"; it sets keyable,
   and a non-keyable attribute is not hidden.
+
+## `rfk_component` and `rfk_stretch_component` — the spine, and the spine that stretches
+
+A reverse FK chain gives an animator two controls, one at each end, and works the middle out: each
+middle joint takes a share of both ends' rotation, weighted by how far along it is, so turning the
+chest carries the spine with it. Each middle joint keeps a control of its own on top of that. The
+stretchy variant adds one translate channel on the top control that lengthens the chain, and squashes
+its cross-section to keep the volume.
+
+**`RFKStretchComponent` was a copy of `RFKComponent` with a stretch layer bolted on.** `get_flags`,
+`start_flag`, `end_flag`, `mid_flags`, `sub_flags`, `mid_groups`, `mid_offset_groups` and
+`attach_to_skeleton` were character for character the same in both files, and so was the block that
+parents the groups and wires everything up. All of it is on a new `ReverseChainComponent`, which both
+inherit from. They stay two separate classes rather than one inheriting from the other, because
+`cinematics/shot_utils.py` asks a rig for its children `of_type=frag.RFKComponent` and a stretchy spine
+is not one of those — making it a subclass would change what that lookup answers.
+
+- **Both `attach_to_skeleton` methods required the control count and the joint count to match
+  exactly**, and attached nothing at all, silently, when they did not: `if len(flag_list) ==
+  len(joint_list)`. A five-control spine driven from a six-joint markup chain — one extra joint on the
+  other skeleton, a head counted into the region — came back with an empty list and no complaint. This
+  is the strictest of the three spellings of this bug found in `frag`, and it is now in the one place
+  both read it from.
+- **`RFKStretchComponent` is at version 2 with no step to get there from version 1**, the second
+  component found like that after `twist_fixup_component`. Every stretchy spine built by the version
+  that wrote 1 raises `AttributeError` the moment anything asks it to update.
+- **A chain too short to be a reverse FK chain was a `KeyError`** in both. `rfk_chain` and
+  `rfk_stretch_chain` answer `{}` for fewer than three joints, with a warning saying why, and the next
+  line is `chain_dict['mid_flags']` — by which point the component, its two groups and one or two
+  duplicated chains are in the scene. Asked before anything is built, and refused.
+- **`sub_flags` answered None when there were none**, and answered raw nodes rather than `Flag`
+  objects — the only flag property on either class that did either, and both were in its docstring,
+  which is how a caller ends up writing `or []` around a list.
+- **`get_flags` wrapped every attribute read in `Flag`** with nothing asking whether the attributes
+  were still wired, so a component that had lost a control raised from inside the wrapper.
+- **`mid_flags` sorted the controls by name.** The attribute holds them in the order they were built,
+  which is the order along the chain; sorting by name gives the same answer only while the skeleton's
+  joints are numbered with a leading zero.
+- The stretch component's leaf-joint recovery — which rebuilds the leaf list by walking each chain
+  joint's children when the markup has resolved badly — reported through `logger.info` with a
+  pre-formatted string, said "extras will be skipped" in the failure case while going on to use the
+  list anyway, and left `None` in the holes of the list it built. It is its own function now, it says
+  which chain joints have no leaf under them, and a list it cannot complete falls back to scaling the
+  bind joints rather than being used with `None` in it.
+
+**And one piece of Maya behaviour the suite now pins, because it reads like a bug and is not.** A
+component that is already being driven by one skeleton cannot be driven by a second: `attach_to_skeleton`
+comes back empty. `constraint_safe_attrs` treats an existing constraint on a channel as a rival driver
+and skips that axis — deliberately, because constraining over one is how you make a cycle — and when
+every axis is skipped `parent_constraint_safe` answers None. An animation curve or an animation layer
+is *not* a rival, so attaching over animation works. Worth knowing before reading an empty list as a
+failure.
