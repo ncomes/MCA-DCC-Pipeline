@@ -49,6 +49,9 @@ What was wrong before:
   ``create`` made the node, wrote the attributes and only then tried to wrap it.
 - **``set_frag_parent`` accepted something it could not use**: it checks with ``is_frag_node``,
   which says yes to a raw network node, and then reaches for ``.pynode``.
+- **Two of these wrapping one node were not equal to each other**, and a set of them held both.
+  Every walk over the graph builds new wrappers, so ``list(set(rigs))`` never removed a repeat and
+  ``x not in found`` was always true. They compare and hash by the node they wrap now.
 - ``get_frag_root`` and ``get_asset_id`` read the node passed to them and never touch ``self``,
   which their own docstrings had to explain; they are static now, and every existing caller - all
   of which call them on an instance - still works. The two node-unwrapping ladders in
@@ -310,6 +313,52 @@ class FRAGNode(metaclass=FRAGNodeRegister):
         """
 
         self.pynode = as_pynode(node)
+
+    def __eq__(self, other):
+        """
+        Two of these are the same when they wrap the same node.
+
+        Every walk over the graph builds new wrappers, so without this a node found twice came back
+        as two things that were not equal to each other - which is what made ``list(set(rigs))`` in
+        ``frag_rig.get_frag_rigs`` a no-op, and ``x not in found`` always true.
+
+        :param other: What to compare against.
+        :return: Whether it wraps the same node. ``NotImplemented`` for anything that is not one of
+            these, so Python falls back to its own answer.
+        :rtype: bool
+        """
+
+        if not isinstance(other, FRAGNode):
+            return NotImplemented
+        return self.pynode == other.pynode
+
+    def __ne__(self, other):
+        """
+        :param other: What to compare against.
+        :return: Whether it wraps a different node.
+        :rtype: bool
+        """
+
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+
+    def __hash__(self):
+        """
+        :return: The wrapped node's hash, so a set of these holds one entry per node.
+        :rtype: int
+        """
+
+        return hash(self.pynode)
+
+    def __repr__(self):
+        """
+        :return: The class and the node it wraps, for a log line or a failing check.
+        :rtype: str
+        """
+
+        return '{0}({1})'.format(type(self).__name__, self.pynode)
 
     @staticmethod
     def create(frag_parent, frag_type, version):

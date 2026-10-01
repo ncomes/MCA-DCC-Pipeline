@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**2,163 checks in 31 suites** so far — 2,179 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
+**2,261 checks in 32 suites** so far — 2,277 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -75,6 +75,7 @@ any of this.
 | `rigging/skel_utils.py` | ported, 67 checks — exporting over a read-only file failed, and restoring markup cleared every weight lock |
 | `rigging/frag/frag_base.py`, `rigging/frag/__init__.py` | ported, 93 checks — no rig has ever been brought up to a new component version |
 | `rigging/frag/rig_component.py`, `rigging/frag/keyable_component.py` | ported, 57 checks — `align_component` has never aligned anything |
+| `rigging/frag/frag_root.py`, `skeletal_mesh.py`, `frag_rig.py`, `display_layers.py` | ported, 98 checks — reading a rig's scale rewired it; a rig build took other characters' geometry |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1606,3 +1607,69 @@ not a thing to quietly change under two thousand checks.
   reader stay — a rig built without it would differ from every rig so far for no gain — but what they
   are is written down rather than left to be found out. `frag_base`'s `as_pynode` and
   `wrap_frag_node` are public now, because every module in the package wants both.
+
+## `rigging/frag/frag_root.py`, `skeletal_mesh.py`, `frag_rig.py`, `display_layers.py` — a whole rig
+
+These four are the rig itself, and they had to come over together: `frag_root` imports `frag_rig` and
+`frag_rig` imports `frag_root`. A rig's **root** says which asset it is and carries the skeleton; the
+**skeletal mesh** node owns the geometry and the two groups it lives in; the **rig** makes the three
+groups everything hangs under and answers the questions that are about all of it at once; the
+**display layers** node holds the layers that keep its viewport tidy.
+
+- **A rig build took every mesh in the scene, not its own.** `SkeletalMesh.create` gathers the
+  geometry through `get_all_meshes_from_scene`, which looks at `pm.ls(type=pm.nt.Mesh)` with no regard
+  for the namespace — while `get_blendshapes_from_scene` sitting directly beside it works through the
+  rig's markup and *is* namespace-aware. So building a rig in a scene that had anything else in it —
+  another character, a prop, a reference — took the other thing's geometry and parented it into this
+  rig's `grp_skins`.
+- **The variant a rig was built for has never been recorded on the node.** `create` adds a `variant`
+  attribute and never writes to it, and sets `variantVersion` to the literal `1` rather than to the
+  `variant_version` it was given. The arguments do reach `buildKwargs`, so nothing is lost — but every
+  rig in the depot reads variant `''` at version 1 on the two attributes meant to hold them.
+- **Reading a rig's scale rebuilt part of the rig.** The `rig_scale` property, when the attribute was
+  missing, called `_scale_components` — which adds the attribute, wires it to the top group, and calls
+  `set_scale()` on every keyable component in the rig. A property read that changes the scene is the
+  same fault `chain_markup`'s getters had. Reading it answers the scale now, off the top group when
+  the attribute is absent, and `add_rig_scale()` is the thing that wires it.
+- **A rig with utility controls and no detail controls left them on no layer at all.**
+  `create_display_layers` puts utility controls on the detail layer, inside the `if detail_flags:`
+  that builds it. Either kind is enough to build the layer now.
+- **`DisplayLayers.remove_objects` ignored the layer it was given.** It looked the layer up, used it
+  as nothing but a gate, and then moved the objects it was handed onto Maya's default layer whatever
+  layer they were actually on — so taking a control off the detail layer took it off the skeleton
+  layer too, as long as the detail layer existed.
+- **`DisplayLayers.remove` never deleted the node.** Its last act is `pm.delete(self)` — the wrapper,
+  not the node — which pymel refuses, inside a bare `except Exception` logged at *debug*. Removing a
+  rig's display layers deleted the layers and silently left the node behind, every time.
+- **Two `FRAGNode` wrappers around one node were not equal to each other**, and a set of them held
+  both. Every walk over the graph builds new wrappers, so `list(set(all_frag_rigs))` in
+  `get_frag_rigs` never removed a repeat and `x not in found` was always true. `FRAGNode` compares and
+  hashes by the node it wraps now, and has a `__repr__` that says which node that is.
+- **`color_flags` turned an override on for a side it had no colour for.** A control whose component
+  says `top` is not in the colour table, so `overrideEnabled` was set and `overrideColor` was not,
+  leaving the control drawn in whatever index it already had.
+- **Four functions reached through a rig root without checking there was one** — `get_root_joint`,
+  `get_group_skins`, `get_group_blendshapes` and `get_frag_rig` — so asking any of them about a node
+  that is not in a rig raised `AttributeError` on `None`. And `get_frag_skeletal_mesh` and
+  `get_frag_rig` both raised on a node whose `fragParent` exists but is connected to nothing, because
+  `FRAGNode(None)` gets as far as `pm.PyNode(None)`.
+- **`get_frag_skeletal_mesh` answered two different kinds of thing** — a wrapped node down one path
+  and the raw `fragParent` connection down the other — and its docstring said it returns a `FRAGRig`.
+- **`get_all_frag_roots` stopped on the first node it could not wrap**, so one pre-FRAG node or one
+  component from another project in the scene and it raised instead of answering the roots it found.
+- `get_frag_root` was the same walk as `FRAGNode.get_frag_root` written twice, differing in whether a
+  root is recognised by its class or by its `isFragRoot` attribute; it does the walk once through the
+  base now and then says whether what came back really is a `FRAGRoot`. `create_display_layers` and
+  `create_display_layers_for_cam` were the same thirty lines twice over, differing in two things, and
+  the six control queries were the same two lines six times. `_get_layer_absolute_name_from_layer`
+  answered a name *without* its namespace, which is the opposite of an absolute name — it is
+  `naming.get_basename`. An asset id the registry does not know became `'missing_name'` in silence.
+  The layer display types, the group names and the attribute names were all bare strings and numbers.
+
+Two things about this group are written down rather than changed. `FRAGRig.get_flags` finds every
+control in the rig's *namespace*, which is right for a referenced rig and for one rig in a scene, but
+two rigs sharing a namespace each answer the other's controls — and nothing on a control says which
+rig it belongs to except the component above it. And `DisplayLayers`' `layers` attribute is a multi
+*string* attribute with the layers' message plugs connected into it, which Maya allows; it works, but
+`merge_values` cannot tell a duplicate from a new entry on it, so a layer added twice would be
+connected twice. Nothing does that, because a layer is only added when the rig has none by that name.
