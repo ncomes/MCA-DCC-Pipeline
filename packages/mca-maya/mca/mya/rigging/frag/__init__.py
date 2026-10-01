@@ -43,6 +43,9 @@ COMPONENT_MODULES = (
     'pelvis_component',
     'world_component',
     'pin_component',
+    'aim_component',
+    'space_switch_component',
+    'attachment_component',
 )
 
 

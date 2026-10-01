@@ -83,6 +83,7 @@ any of this.
 | `rigging/frag/world_component.py`, `cog_component.py`, `pelvis_component.py`, `clavicle_component.py` | ported, 84 checks — a COG's fallback could never reach its last choice, and a clavicle looked its chain up with an attribute object |
 | `modeling/rivets.py` | ported, 40 checks — attaching a transform to a surface built an evaluation cycle on its default arguments |
 | `rigging/frag/pin_component.py` | ported, 41 checks — the three control methods every component carried a copy of raised on a component with no controls |
+| `rigging/frag/attachment_component.py`, `space_switch_component.py`, `aim_component.py` | ported, 62 checks — two of the three recorded work that had not been done, and the third wiped joint labels |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -2057,3 +2058,56 @@ FRAG component around one: a control pinned to a mesh, driving one joint.
   rebuild actually cannot work out for itself, the UV, was not recorded at all. It is now. And a mesh
   that cannot be pinned to left a half-built component and its two groups behind in the scene; the
   component takes itself out again.
+
+## `attachment_component`, `space_switch_component`, `aim_component` — three small records
+
+Three components that are mostly bookkeeping: one records that a rig is following a node on another
+rig, one records a space switch, and one records a joint that points at a control. Two of the three
+had the same fault in different clothes — they built their own metadata node *before* asking whether
+the thing they were recording could be made, so the failure path left an orphan component in the
+scene and handed the caller None.
+
+- **`AttachmentComponent.create` left an orphan on the one path it can fail.** It makes its node and
+  writes its `buildKwargs` block, and only then looks for a `FRAGRig` under the rig root it was asked
+  to attach — so a root with no rig under it came back as None with an `AttachmentComponent` node and
+  its attributes still in the scene. The question is asked first.
+- **`SpaceSwitchComponent.create` recorded a switch that had not been built.** `space_switch_rig`
+  answers an empty result — no constraints, no conditions, no group — when it is handed no spaces, or
+  when the switch attribute is already on the control. `create` wrote that empty answer onto a node
+  and handed back a component whose `switchAttrName` names an enum that is not there. It builds the
+  switch first, and when there is nothing to record it makes no node.
+- **`AimComponent` wiped the Maya joint labels off the joint it drives**, the third component in
+  `frag` to do it after `ik_component` and `ikfk_component`: three lines copying `side`, `type` and
+  `otherType` from a control that carries Maya's defaults for all three. For this one the joint is
+  usually an eye, and `JointMarkup.side` falls back to that label on a skeleton with no `skelSide`
+  markup — so building the rig changed the side the pipeline reads off the eyes.
+- **`AimComponent.get_flags` answered None for a component with no control**, where every other
+  component in `frag` answers an empty list. The three methods built on it — the ones a tool calls to
+  select or key a component's controls — then raised `TypeError` on iteration rather than doing
+  nothing.
+- **`AimComponent.create` took no `**kwargs`**, which makes it the one component a rebuild cannot
+  hand a shared argument list to: `get_build_kwargs` answers everything that was recorded, and
+  anything the signature does not name is a `TypeError`. The suite drives that rebuild.
+- **`AttachmentComponent` is named for a side and a region it never recorded.** Every other component
+  in `frag` carries its side and region as markup and the tools that walk a rig read them; this was
+  the one node in a rig named for a side it could not be asked about. It carries them now.
+- **There was no way to undo an attachment.** The component knows the group it inserted and the
+  control group it was put above, which is everything needed; `remove` puts the control group back
+  where it was and deletes the group and the component.
+- `t` and `r` are undocumented short spellings of `translate` and `rotate` in both of the first two,
+  read out of `**kwargs`, silently winning over the named parameters. Both signatures say so now.
+  `space_switch_component` also read `default_name` — which relabels the first entry of the enum, for
+  when the first space is "world" rather than a node an animator would recognise — out of `**kwargs`
+  and did not record it, so a rebuild lost it.
+- `AimComponent` added `distance`, `aimAxis` and `upAxis` to its node with eight `addAttr` calls, two
+  of them building a `float3` and its three children by hand, where `set_attribute` works the type
+  out from the value. Those three numbers are a second copy of what is in `buildKwargs`; they stay,
+  because tools read them, and the readers say where they come from. `get_eye_rotations` assumes an up
+  and forward axis in a comment while ignoring the component's own `aimAxis` and `upAxis` — that is in
+  its docstring now, because it is the thing a caller needs to know before trusting it.
+
+**Two misspelled attribute names kept deliberately.** `AttachmentComponent` puts
+`attachementComponent` on the control group it attaches and `sourceAttachement` on the component the
+attachment point belongs to. Nothing in the pipeline reads either, and correcting them would make the
+attachment on every rig in the depot unreadable by this code, so they stay exactly as they are — with
+constants named for what they are, and a note saying why.
