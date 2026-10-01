@@ -152,8 +152,8 @@ def body(suite):
     # ---------------------------------------------------------------- #
     globals_block = asset_paths.GlobalData()
     suite.check('a skeleton can be registered, and they come back sorted',
-                globals_block.add_skeleton('WaywardBot') and globals_block.add_skeleton('SKEL_Props') and
-                globals_block.skeletons == ['SKEL_Props', 'WaywardBot'],
+                globals_block.add_skeleton('SampleBot') and globals_block.add_skeleton('SKEL_Props') and
+                globals_block.skeletons == ['SKEL_Props', 'SampleBot'],
                 str(globals_block.skeletons))
     suite.check('a body type names a skeleton, and registers it if it is new',
                 globals_block.add_body_type('ZLeg', 'SKEL_ZLeg') and

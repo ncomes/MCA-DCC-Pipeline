@@ -48,29 +48,29 @@ def body(suite):
     framework = os.path.join(temp, 'depot', 'packages')
     os.makedirs(os.path.join(framework, 'mca-common', 'mca', 'common'))
     os.makedirs(os.path.join(framework, 'mca-maya', 'mca', 'mya'))
-    project_root = os.path.join(temp, 'Wayward')
+    project_root = os.path.join(temp, 'SampleGame')
     os.makedirs(project_root)
 
     yamlio.write_to_yaml_file(
-        {consts.MCA_PROJECT_NAME: 'Wayward',
+        {consts.MCA_PROJECT_NAME: 'SampleGame',
          consts.MCA_PROJECT_ROOT: project_root,
          consts.MCA_FRAMEWORK_PATH: framework,
          consts.MCA_CHARACTERS_PATH: os.path.join(temp, 'art', 'Characters')},
-        project_paths.get_preferences_file('Wayward'))
+        project_paths.get_preferences_file('SampleGame'))
 
     datafile.write({'mca_directories': {'maya': {'depots': ['mca-maya']}}},
                    os.path.join(framework, consts.MCA_PACKAGE_BOOTS), fmt='yaml')
 
     # The launcher's own file: which project was open last.
-    datafile.write({'version': 2, consts.CURRENT_PROJECT_KEY: 'Wayward'},
+    datafile.write({'version': 2, consts.CURRENT_PROJECT_KEY: 'SampleGame'},
                    os.path.join(prefs_root, consts.MCA_LAUNCHER_PREFS_FILE), fmt='yaml')
 
     suite.check('the current project is read from the file the launcher writes',
-                attach.current_project_name() == 'Wayward',
+                attach.current_project_name() == 'SampleGame',
                 attach.current_project_name())
     suite.check('and the framework path comes from that project\'s preferences',
-                attach.framework_for('Wayward') == framework,
-                attach.framework_for('Wayward'))
+                attach.framework_for('SampleGame') == framework,
+                attach.framework_for('SampleGame'))
 
     # ---------------------------------------------------------------- #
     # Attaching
@@ -78,12 +78,12 @@ def body(suite):
     before = list(sys.path)
     report = attach.attach()
     suite.check('attaching works out the project by itself', report['ok'] and
-                report['project'] == 'Wayward', report['message'])
+                report['project'] == 'SampleGame', report['message'])
     suite.check('and puts that project\'s mca-common in front, so it is the copy that '
                 'answers from here on',
                 sys.path[0] == os.path.join(framework, 'mca-common'), sys.path[0])
     suite.check('and sets the project environment',
-                os.getenv(consts.MCA_PROJECT_NAME) == 'Wayward' and
+                os.getenv(consts.MCA_PROJECT_NAME) == 'SampleGame' and
                 os.getenv(consts.MCA_CHARACTERS_PATH, '').endswith('Characters'),
                 str(os.getenv(consts.MCA_CHARACTERS_PATH)))
 
@@ -100,7 +100,7 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # A named project, and a DCC's packages
     # ---------------------------------------------------------------- #
-    report = attach.attach('Wayward', dcc='maya', set_environment=False)
+    report = attach.attach('SampleGame', dcc='maya', set_environment=False)
     suite.check('a DCC can be named, and its packages come too',
                 any(one.endswith('mca-maya') for one in report['added']),
                 str(report['added']))
@@ -131,8 +131,8 @@ def body(suite):
     suite.check('a prepared environment is believed before the launcher\'s last choice',
                 attach.resolve_project() == 'Gone', attach.resolve_project())
     suite.check('and an explicit name beats both',
-                attach.resolve_project('Wayward') == 'Wayward')
-    os.environ[consts.MCA_PROJECT_NAME] = 'Wayward'
+                attach.resolve_project('SampleGame') == 'SampleGame')
+    os.environ[consts.MCA_PROJECT_NAME] = 'SampleGame'
 
     suite.note('checks_written', len(suite.checks))
 

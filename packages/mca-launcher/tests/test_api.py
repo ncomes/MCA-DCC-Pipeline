@@ -101,7 +101,7 @@ def body(suite):
     project_root = os.path.join(suite.temp, 'project')
     os.makedirs(project_root)
 
-    saved = api.save_project('Wayward', project_root, framework,
+    saved = api.save_project('SampleGame', project_root, framework,
                              art_path=os.path.join(suite.temp, 'art'))
     suite.check('a project saves through the API', saved['ok'], saved['message'])
     suite.check('and the message names where it went',
@@ -109,12 +109,12 @@ def body(suite):
 
     current = api.current_project()
     suite.check('it becomes the current project',
-                current['ok'] and current['result']['name'] == 'Wayward', current['message'])
+                current['ok'] and current['result']['name'] == 'SampleGame', current['message'])
 
     suite.check('a second project can be added',
                 api.save_project('Other', project_root, framework)['ok'])
     suite.check('and switching between them works',
-                api.set_current_project('Wayward')['ok'])
+                api.set_current_project('SampleGame')['ok'])
     suite.check('switching to one that does not exist is refused',
                 not api.set_current_project('Nothing')['ok'])
 
@@ -175,7 +175,7 @@ def body(suite):
         batch = os.path.join(installers, 'Pretend', '2026', 'deploy.bat')
         with open(batch, 'w') as handle:
             handle.write('@echo off\n')
-        api.save_project('Wayward', project_root, framework,
+        api.save_project('SampleGame', project_root, framework,
                          art_paths={'MCA_INSTALLERS_PATH': installers})
 
         listing = api.dcc_targets()
@@ -284,7 +284,7 @@ def body(suite):
             time.sleep(0.05)
         handed = fileio.read_json(output, default={})
         suite.check('the environment really did reach the process it started',
-                    handed.get('MCA_PROJECT_NAME') == 'Wayward', str(sorted(handed)))
+                    handed.get('MCA_PROJECT_NAME') == 'SampleGame', str(sorted(handed)))
         suite.check('including the dependency folder for that exact version',
                     handed.get('MCA_COMMON_DEPEND', '').endswith('pretend-2025'),
                     handed.get('MCA_COMMON_DEPEND', ''))
@@ -293,8 +293,8 @@ def body(suite):
                     handed.get('MCA_FRAMEWORK_PATH', ''))
 
         suite.check('the version that was launched is remembered by name',
-                    prefs.Selections.load('Wayward').dccs.get('pretend') == '2025',
-                    str(prefs.Selections.load('Wayward').dccs))
+                    prefs.Selections.load('SampleGame').dccs.get('pretend') == '2025',
+                    str(prefs.Selections.load('SampleGame').dccs))
 
         # -- the second launch is the cheap one ----------------------- #
         calls = []
@@ -342,15 +342,15 @@ def body(suite):
                         response['message'])
             suite.check('named for the DCC, the version and the project',
                         written and written[-1]['path'].endswith(
-                            os.path.join(suite.temp, 'Pretend 2025 - Wayward.lnk')),
+                            os.path.join(suite.temp, 'Pretend 2025 - SampleGame.lnk')),
                         str(written[-1]['path'] if written else None))
             arguments = written[-1]['arguments']
             suite.check('and it starts the launcher with that exact version',
                         'pretend:2025' in arguments, str(arguments))
             suite.check('and with the project written into it, not "whichever is current"',
-                        '--project' in arguments and 'Wayward' in arguments, str(arguments))
+                        '--project' in arguments and 'SampleGame' in arguments, str(arguments))
             suite.check('and the message says where it went and what it does',
-                        'desktop' in response['message'] and 'Wayward' in response['message'],
+                        'desktop' in response['message'] and 'SampleGame' in response['message'],
                         response['message'])
 
             # With no version named it takes what was chosen, which is what the row shows.
@@ -376,7 +376,7 @@ def body(suite):
         # -- doctor --------------------------------------------------- #
         report = api.doctor()
         suite.check('doctor reports the project, the framework and every DCC it found',
-                    report['ok'] and report['result']['project'] == 'Wayward'
+                    report['ok'] and report['result']['project'] == 'SampleGame'
                     and len(report['result']['dccs']) == 2, report['message'])
         suite.check('and lists the out-of-date dependencies as a problem',
                     any('changed' in problem for problem in report['result']['problems']),
@@ -391,7 +391,7 @@ def body(suite):
     removed = api.remove_project('Other')
     suite.check('a project can be removed', removed['ok'], removed['message'])
     suite.check('and the other one is still there',
-                [one['name'] for one in api.list_projects()['result']['projects']] == ['Wayward'])
+                [one['name'] for one in api.list_projects()['result']['projects']] == ['SampleGame'])
     suite.check('removing it twice is refused', not api.remove_project('Other')['ok'])
 
     suite.note('checks_written', len(suite.checks))

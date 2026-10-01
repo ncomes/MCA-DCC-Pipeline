@@ -4,7 +4,7 @@ Unreal's start-up script.
 Unreal runs this when the editor opens, because the launcher puts this folder on
 ``UE_PYTHONPATH``.
 
-The version this replaces defaulted the project name to ``'Wayward'``, so a missing
+The version this replaces defaulted the project name to ``'SampleGame'``, so a missing
 ``MCA_PROJECT_NAME`` silently started somebody else's project - in a file headed for an open
 repository. There is no default now: with no project set, the framework says so and does not
 start.

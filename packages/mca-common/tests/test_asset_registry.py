@@ -146,15 +146,15 @@ def body(suite):
         suite.check('with nothing set, an engine path is just Unreal\'s content root',
                     unified_entry.build_engine_path('Characters/Hero') == '/Game/Characters/Hero',
                     unified_entry.build_engine_path('Characters/Hero'))
-        os.environ[unified_entry.ENGINE_ROOT_VARIABLE] = 'Wayward'
+        os.environ[unified_entry.ENGINE_ROOT_VARIABLE] = 'SampleGame'
         suite.check('a project names its own folder under it, rather than editing the code',
                     unified_entry.build_engine_path('Characters/Hero') ==
-                    '/Game/Wayward/Characters/Hero',
+                    '/Game/SampleGame/Characters/Hero',
                     unified_entry.build_engine_path('Characters/Hero'))
-        os.environ[unified_entry.ENGINE_ROOT_VARIABLE] = '/Game/Rascal/'
+        os.environ[unified_entry.ENGINE_ROOT_VARIABLE] = '/Game/SampleGame/'
         suite.check('however it is written',
                     unified_entry.build_engine_path('Characters/Hero') ==
-                    '/Game/Rascal/Characters/Hero')
+                    '/Game/SampleGame/Characters/Hero')
         suite.check('and a path that is already an engine path is left alone',
                     unified_entry.build_engine_path('/Game/somewhere/else') ==
                     '/Game/somewhere/else' and
@@ -168,7 +168,7 @@ def body(suite):
     # making an asset
     # ---------------------------------------------------------------- #
     hero = unified_entry.UnifiedAssetEntry.create('Hero Bot', 'Characters', subtype='Heroes',
-                                                  faction='Agents', skeleton='WaywardBot')
+                                                  faction='Agents', skeleton='SampleBot')
     suite.check('a new asset gets an id, a path and an engine path without being told any',
                 hero.asset_id == 'characters_hero_bot' and
                 hero.path == 'Characters/Heroes/Agents/Hero Bot' and
@@ -176,7 +176,7 @@ def body(suite):
                 '{0} | {1}'.format(hero.asset_id, hero.path))
     suite.check('and the fields it was given',
                 hero.name == 'Hero Bot' and hero.subtype == 'Heroes' and
-                hero.faction == 'Agents' and hero.skeleton == 'WaywardBot' and
+                hero.faction == 'Agents' and hero.skeleton == 'SampleBot' and
                 hero.asset_type == 'SkeletalMesh')
     suite.check('it is not gear, and has no parent',
                 hero.is_gear is False and hero.is_parent is True and hero.built_for == '')

@@ -75,7 +75,7 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # A project
     # ---------------------------------------------------------------- #
-    project_root = os.path.join(temp, 'Wayward')
+    project_root = os.path.join(temp, 'SampleGame')
     os.environ[consts.MCA_PROJECT_ROOT] = project_root
     os.environ[consts.MCA_COMMON_TOOLS] = os.path.join(project_root, 'Tools', 'Common', 'Tools')
     os.environ[consts.MCA_CHARACTERS_PATH] = os.path.join(temp, 'art', 'Characters')

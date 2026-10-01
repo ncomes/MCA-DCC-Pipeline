@@ -94,7 +94,7 @@ def body(suite):
     write_project(suite.temp, {
         'Characters': {
             'characters_hero_bot': asset('Hero Bot', 'Characters', subtype='Heroes',
-                                         namespace='hero', skeleton='WaywardBot'),
+                                         namespace='hero', skeleton='SampleBot'),
             'characters_villain_bot': asset('Villain Bot', 'Characters', subtype='Enemies',
                                             namespace='villain'),
         },
@@ -157,7 +157,7 @@ def body(suite):
     hero = manager.get_record('characters_hero_bot')
     suite.check('a record carries the fields the registry holds',
                 hero.name == 'Hero Bot' and hero.category == 'Characters' and
-                hero.subtype == 'Heroes' and hero.skeleton == 'WaywardBot')
+                hero.subtype == 'Heroes' and hero.skeleton == 'SampleBot')
     suite.check('its folders come from its category',
                 hero.src_rig_path.endswith(os.path.join('_Source', 'Rigs')) and
                 hero.models_path.endswith('Meshes'),

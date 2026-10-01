@@ -150,7 +150,7 @@ def body(suite):
     suite.check('and Save is off until it has something to save',
                 not window.save_button.isEnabled())
 
-    window.name_edit.setText('Wayward')
+    window.name_edit.setText('SampleGame')
     window.root_row.set_text(project_root)
     window.framework_row.set_text(project_root)   # exists, but holds no mca-common
     suite.check('a framework path that is not one keeps Save off',
@@ -177,8 +177,8 @@ def body(suite):
     saved = []
     window.saved.connect(saved.append)
     window._save()
-    suite.check('saving writes the project', os.path.isfile(prefs.project_prefs_file('Wayward')))
-    suite.check('and tells whoever is listening', saved == ['Wayward'], str(saved))
+    suite.check('saving writes the project', os.path.isfile(prefs.project_prefs_file('SampleGame')))
+    suite.check('and tells whoever is listening', saved == ['SampleGame'], str(saved))
     suite.check('and created the art folders it was asked to',
                 os.path.isdir(os.path.join(suite.temp, 'art', 'Characters')))
     suite.check('and nothing was complained about', not shown['complain'], str(shown['complain']))
@@ -231,7 +231,7 @@ def body(suite):
         suite.check('with the newest version selected',
                     main.rows['pretend'].current_key() == '2025',
                     main.rows['pretend'].current_key())
-        suite.check('and the project in the project bar', main.project_bar.current_project() == 'Wayward',
+        suite.check('and the project in the project bar', main.project_bar.current_project() == 'SampleGame',
                     main.project_bar.current_project())
 
         # -- pressing launch when the install fails -------------------- #
@@ -289,8 +289,8 @@ def body(suite):
 
         row.versions.setCurrentIndex(2)
         suite.check('changing to another installed version remembers it',
-                    prefs.Selections.load('Wayward').dccs.get('pretend') == '2024',
-                    str(prefs.Selections.load('Wayward').dccs))
+                    prefs.Selections.load('SampleGame').dccs.get('pretend') == '2024',
+                    str(prefs.Selections.load('SampleGame').dccs))
 
         # -- the button's job changes with what is selected ------------- #
         asked = []
@@ -385,7 +385,7 @@ def body(suite):
                 if action.text() == 'Pretend 2024':
                     action.trigger()
             suite.check('and picking one makes a shortcut for that version and this project',
-                        made == [('pretend', '2024', 'Wayward')], str(made))
+                        made == [('pretend', '2024', 'SampleGame')], str(made))
 
             # And the same from the row, which is where somebody is already looking.
             made[:] = []
@@ -393,7 +393,7 @@ def body(suite):
             row.versions.setCurrentIndex(row.keys.index('2025'))
             row.shortcut_requested.emit('pretend', row.current_key())
             suite.check('right-clicking a row offers it for the version that row is showing',
-                        made == [('pretend', '2025', 'Wayward')], str(made))
+                        made == [('pretend', '2025', 'SampleGame')], str(made))
         finally:
             api.create_shortcut = real_create
 

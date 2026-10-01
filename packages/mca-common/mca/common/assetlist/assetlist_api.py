@@ -1152,11 +1152,11 @@ def register_asset(name, category, subtype='', faction='', skeleton='', body_typ
     asset_type are checked against that category's vocabulary and a value outside
     it is rejected rather than written.
 
-    :param str name: Display name, e.g. 'Frostwind'.
+    :param str name: Display name, e.g. 'Clockwork'.
     :param str category: Category name; see list_categories.
     :param str subtype: Sub-category; see describe_category.
     :param str faction: Faction; see describe_category.
-    :param str skeleton: Skeleton reference, e.g. 'WaywardBot'.
+    :param str skeleton: Skeleton reference, e.g. 'SampleBot'.
     :param str body_type: Body type, e.g. 'Humanoid'.
     :param str asset_type: SkeletalMesh, StaticMesh or Material.
     :param str built_for: Parent character display name for gear; separate several

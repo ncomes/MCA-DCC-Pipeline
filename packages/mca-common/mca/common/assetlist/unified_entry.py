@@ -32,7 +32,7 @@ a plain string when there is only one. What changed:
   business: see :mod:`mca.common.sourcecontrol`. The placeholder a folder needs to be storable
   at all is that interface's too, since Git wants one just as much as Perforce does.
 - **The engine path had a project's name written into it.** ``build_engine_path`` prefixed
-  ``/Game/Wayward/``. It reads :data:`ENGINE_ROOT_VARIABLE` from the environment now, so
+  ``/Game/SampleGame/``. It reads :data:`ENGINE_ROOT_VARIABLE` from the environment now, so
   another project is another variable rather than another edit.
 - Every one of its ninety-odd properties read ``self._fields``, which
   re-derived the asset id from the dictionary's keys on each access. The record knows its own
@@ -402,7 +402,7 @@ def derive_path_flags_and_order(asset_dict):
 
 #: Where in the engine's content a project's assets live. ``/Game/`` is Unreal's own content
 #: root; what follows it is the project's own folder, which the version this replaces had
-#: written into the code as ``Wayward``.
+#: written into the code as ``SampleGame``.
 ENGINE_ROOT_VARIABLE = 'MCA_ENGINE_CONTENT_ROOT'
 
 #: Used when that variable is not set: Unreal's content root, with nothing added.
@@ -412,7 +412,7 @@ DEFAULT_ENGINE_ROOT = '/Game'
 def engine_root():
     """
     :return: The engine content folder the project's assets go under, always starting and
-        ending without a stray slash - ``'/Game/Wayward'``, ``'/Game'``.
+        ending without a stray slash - ``'/Game/SampleGame'``, ``'/Game'``.
     :rtype: str
     """
 
@@ -434,7 +434,7 @@ def build_engine_path(dcc_path):
     :return: The engine path, or ``''``.
     :rtype: str
 
-    The version this replaces prefixed ``/Game/Wayward/``, with the project's name in the
+    The version this replaces prefixed ``/Game/SampleGame/``, with the project's name in the
     code. :data:`ENGINE_ROOT_VARIABLE` says it now.
     """
 
@@ -457,7 +457,7 @@ def build_engine_path(dcc_path):
 # parameters (Roughness, Metallic, mask strengths, etc.).
 DYE_CHANNEL_TYPES = ('linear_color', 'scalar')
 
-# Parent material parameter group that defines dye channels in Wayward.
+# Parent material parameter group that defines dye channels in SampleGame.
 # Auto-discovery on the UE side filters parameters to only this group.
 DYE_PARAM_GROUP = 'Color Tinting'
 
@@ -574,7 +574,7 @@ class UnifiedAssetEntry(asset_list.AssetBaseEntry):
         :param str subtype: Sub-category for grouping.
         :param str faction: Faction identifier.
         :param str gender: Gender tag ('Male', 'Female', 'Neutral', or ''). Classification-only; does not affect folder structure.
-        :param str skeleton: Skeleton reference name (e.g. WaywardBot, SKEL_ZLeg).
+        :param str skeleton: Skeleton reference name (e.g. SampleBot, SKEL_ZLeg).
         :param str body_type: Body type name (e.g. Humanoid, ZLeg).
         :param list additional_types: Extra descriptive types that add nested folders.
         :param str slot: Equipment slot for gear (e.g. Chest, WeaponRight). Empty for parents.
@@ -749,7 +749,7 @@ class UnifiedAssetEntry(asset_list.AssetBaseEntry):
     @property
     def skeleton(self):
         """
-        Returns the skeleton reference name (e.g. WaywardBot, SKEL_ZLeg).
+        Returns the skeleton reference name (e.g. SampleBot, SKEL_ZLeg).
 
         :return: Skeleton name, or empty string if unset.
         :rtype: str
@@ -1086,7 +1086,7 @@ class UnifiedAssetEntry(asset_list.AssetBaseEntry):
     @property
     def engine_path(self):
         """
-        Returns the Unreal Engine content path (e.g. /Game/Wayward/...).
+        Returns the Unreal Engine content path (e.g. /Game/SampleGame/...).
 
         :return: UE content path, or empty string if unset.
         :rtype: str

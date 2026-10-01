@@ -18,7 +18,7 @@ sentence saying so rather than a traceback from somewhere further in.
     from mca.common.startup import attach
 
     report = attach.attach()                 # the current project
-    report = attach.attach('Wayward')        # a particular one
+    report = attach.attach('SampleGame')        # a particular one
     report = attach.attach(start=True)       # and start the framework too
 
 The one subtlety is that there can be two mca-commons: a pip-installed one - which is

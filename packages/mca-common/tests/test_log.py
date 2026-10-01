@@ -85,23 +85,23 @@ def body(suite):
                 log.preferences_folder() == os.path.normpath(
                     os.environ['MCA_PREFS_ROOT']), log.preferences_folder())
 
-    folder = log.logs_folder('Wayward', 'maya')
+    folder = log.logs_folder('SampleGame', 'maya')
     suite.check('logs are kept per project and per DCC',
-                folder.endswith(os.path.join('Wayward', 'maya')), folder)
+                folder.endswith(os.path.join('SampleGame', 'maya')), folder)
     suite.check('and under MCA_LOGS_ROOT when the launcher set one',
                 folder.startswith(os.path.normpath(os.environ['MCA_LOGS_ROOT'])), folder)
     suite.check('the file is named for the DCC and the day',
-                os.path.basename(log.log_file('Wayward', 'maya')).startswith('mca_maya_'),
-                log.log_file('Wayward', 'maya'))
+                os.path.basename(log.log_file('SampleGame', 'maya')).startswith('mca_maya_'),
+                log.log_file('SampleGame', 'maya'))
 
     # ---------------------------------------------------------------- #
     # Writing one
     # ---------------------------------------------------------------- #
-    path = log.setup_file_logging('Wayward', 'maya')
+    path = log.setup_file_logging('SampleGame', 'maya')
     suite.check('setting up file logging writes a file', bool(path) and os.path.isfile(path),
                 str(path))
 
-    again = log.setup_file_logging('Wayward', 'maya')
+    again = log.setup_file_logging('SampleGame', 'maya')
     files = [handler for handler in log.MCA_LOGGER.handlers
              if isinstance(handler, logging.FileHandler)]
     suite.check('doing it twice does not open a second one', len(files) == 1 and

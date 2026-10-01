@@ -118,7 +118,7 @@ def body(suite):
                 strings.generate_guid())
 
     suite.check('a namespace is the first three letters, lower case',
-                strings.create_namespace('Wayward') == 'way')
+                strings.create_namespace('SampleGame') == 'sam')
     suite.check('and no name answers three random letters rather than raising TypeError',
                 len(strings.create_namespace(None)) == 3)
 

@@ -350,7 +350,7 @@ class UnifiedRegisterUI(register_scaffold.ScaffoldMixin, register_rows.RowsMixin
         # an empty selection is what says "parent asset".
         #
         # De-duplicated deliberately. Several characters have two registry
-        # records (see the Game/Wayward path problem), so the raw list repeats
+        # records (see the Game/SampleGame path problem), so the raw list repeats
         # 'Agent_Male' and 'Base_Female'. built_for stores a NAME, so two rows
         # spelling the same name offer a distinction the data cannot record -
         # and selecting one would silently select both.

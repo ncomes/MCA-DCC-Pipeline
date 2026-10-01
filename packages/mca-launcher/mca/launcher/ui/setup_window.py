@@ -101,7 +101,7 @@ class SetupWindow(QMainWindow):
         required = QGroupBox('The two that matter')
         form = QFormLayout(required)
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText('a short name, for example Wayward')
+        self.name_edit.setPlaceholderText('a short name, for example SampleGame')
         form.addRow('Project name', self.name_edit)
         self.root_row = PathRow('the project root folder')
         form.addRow('Project root', self.root_row)

@@ -58,7 +58,7 @@ touch any of this.
 from mca.common import log
 
 log.MCA_LOGGER.info('what happened')
-log.setup_file_logging('Wayward', 'maya')
+log.setup_file_logging('SampleGame', 'maya')
 ```
 
 `MCA_LOGGING_LEVEL` sets the level. `MCA_LOGS_ROOT` and `MCA_PREFS_ROOT` say where files go,
@@ -128,7 +128,7 @@ and the suites never touch a real machine's.
 ```python
 from mca.common.startup import startup
 
-startup.startup_init('Wayward', 'maya')   # once, from the DCC's own start-up script
+startup.startup_init('SampleGame', 'maya')   # once, from the DCC's own start-up script
 startup.restart()                          # pick up a code change without closing the DCC
 ```
 
@@ -180,7 +180,7 @@ exception stops everything after it, so a broken pipeline costs the tools, not t
 The three used to be the same twenty lines copied about, and the copies had drifted.
 MotionBuilder's called `startup.init(dcc='mobu')` — no such function, and no project name —
 so the framework has never once come up in MotionBuilder. Maya's pip-installed pymel into
-Maya's own installation during start-up. Unreal's defaulted the project to `'Wayward'`.
+Maya's own installation during start-up. Unreal's defaulted the project to `'SampleGame'`.
 
 ## Attaching from outside a DCC
 
@@ -193,7 +193,7 @@ has to answer "which project?" first:
 from mca.common.startup import attach
 
 attach.attach()                  # the launcher's current project
-attach.attach('Wayward')         # a named one
+attach.attach('SampleGame')         # a named one
 attach.attach(dcc='maya', start=True)
 ```
 
@@ -655,7 +655,7 @@ week old). What changed:
   at all goes through the source control interface, which is where Perforce's `.p4keep` and
   Git's `.gitkeep` are the same idea.
 - **The engine path had a project's name written into it**: `build_engine_path` prefixed
-  `/Game/Wayward/`. `MCA_ENGINE_CONTENT_ROOT` says it now, so another project is another
+  `/Game/SampleGame/`. `MCA_ENGINE_CONTENT_ROOT` says it now, so another project is another
   variable rather than another edit.
 
 ### The read layer
@@ -696,7 +696,7 @@ loaded at all**. This suite is what found it; `tests/test_paths.py` now checks t
 from mca.common.assetlist import assetlist_api
 
 assetlist_api.list_categories()
-assetlist_api.register_asset('Frostwind', 'Characters', subtype='Heroes', faction='Agents')
+assetlist_api.register_asset('Clockwork', 'Characters', subtype='Heroes', faction='Agents')
 ```
 
 What a script, an MCP tool or the in-DCC AI calls. Every function answers
@@ -722,7 +722,7 @@ What changed:
 ```python
 from mca.common.animlib import animlib_api
 
-animlib_api.list_clips(character='frostwind')
+animlib_api.list_clips(character='clockwork')
 ```
 
 A catalog of clips, and where each clip's files live: the DCC-agnostic half, so a browser, an

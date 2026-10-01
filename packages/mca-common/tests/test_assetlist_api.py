@@ -50,10 +50,10 @@ def make_project(temp):
     characters = config.get_category_data('Characters')
     characters.subcategories = ['Heroes', 'Enemies']
     characters.factions = ['Agents', 'Gilded']
-    config.global_data.skeletons = ['WaywardBot']
+    config.global_data.skeletons = ['SampleBot']
     config.global_data.asset_types = ['SkeletalMesh', 'StaticMesh']
     config.global_data.slots = ['Hat', 'Chest']
-    config.global_data.add_body_type('Humanoid', 'WaywardBot')
+    config.global_data.add_body_type('Humanoid', 'SampleBot')
     config.save()
     asset_paths.reload()
     asset_manager.get_asset_manager(force_reload=True)
@@ -100,7 +100,7 @@ def body(suite):
     # registering
     # ---------------------------------------------------------------- #
     made = assetlist_api.register_asset('Hero Bot', 'Characters', subtype='Heroes',
-                                        faction='Agents', skeleton='WaywardBot',
+                                        faction='Agents', skeleton='SampleBot',
                                         body_type='Humanoid')
     suite.check('an asset can be registered, and comes back described',
                 made['ok'] and made['result']['asset_id'] == 'characters_hero_bot',

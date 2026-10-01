@@ -11,7 +11,7 @@ The three scripts - Maya's ``userSetup.py``, MotionBuilder's ``startup.py``, Unr
   ``os.path.dirname(os.getenv('MCA_COMMON_PATH'))`` raises TypeError when the variable is
   not set, and in Maya's ``userSetup.py`` an exception means everything after it never runs.
   Opening Maya without the launcher was enough.
-- **Unreal's defaulted the project name to 'Wayward'**, so a missing variable silently
+- **Unreal's defaulted the project name to 'SampleGame'**, so a missing variable silently
   started the wrong project - in a file bound for an open repository.
 - **Maya's installed pymel** - ``mayapy -m pip install pymel``, into Maya's own
   installation, during start-up, resolving ``mayapy`` from PATH, which need not be the Maya

@@ -59,3 +59,9 @@ mayaLog
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# --- Test droppings ---------------------------------------------------------- #
+#
+# test_animlib builds a Characters/ tree beside itself rather than under the run's
+# temp folder. Regenerated on every run; never part of the source.
+packages/*/tests/Characters/

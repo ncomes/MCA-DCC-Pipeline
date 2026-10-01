@@ -4,7 +4,7 @@ The animation library: a catalog of clips, and where each clip's files live.
 ```python
 from mca.common.animlib import animlib_api
 
-animlib_api.list_clips(character='frostwind')
+animlib_api.list_clips(character='clockwork')
 ```
 
 This half knows nothing about a DCC: it reads and writes the catalog, knows where a clip's

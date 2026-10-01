@@ -80,7 +80,7 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # It never takes the DCC down with it
     # ---------------------------------------------------------------- #
-    os.environ[consts.MCA_PROJECT_NAME] = 'Wayward'
+    os.environ[consts.MCA_PROJECT_NAME] = 'SampleGame'
     from mca.common.startup import startup as startup_module
 
     real_startup = startup_module.startup_init

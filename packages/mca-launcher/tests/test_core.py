@@ -132,14 +132,14 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # Preferences
     # ---------------------------------------------------------------- #
-    saved = projects.save_project('Wayward', project_root, framework,
+    saved = projects.save_project('SampleGame', project_root, framework,
                                   art_paths=projects.default_art_paths(
                                       os.path.join(suite.temp, 'art')))
-    suite.check('a project saves', os.path.isfile(prefs.project_prefs_file('Wayward')))
-    suite.check('and is listed', [one['name'] for one in projects.list_projects()] == ['Wayward'])
+    suite.check('a project saves', os.path.isfile(prefs.project_prefs_file('SampleGame')))
+    suite.check('and is listed', [one['name'] for one in projects.list_projects()] == ['SampleGame'])
     suite.check('and is complete', not saved.missing(), str(saved.missing()))
 
-    reloaded = prefs.ProjectPrefs.load('Wayward')
+    reloaded = prefs.ProjectPrefs.load('SampleGame')
     suite.check('reloading gives back the same framework path',
                 reloaded.framework_path == os.path.normpath(framework),
                 reloaded.framework_path)
@@ -156,8 +156,8 @@ def body(suite):
     old = {'maya_version': 2, 'mobu_version': 1, 'unreal_version': 0,
            'unreal_paths': [os.path.join(suite.temp, 'game.uproject')],
            'unreal_saved_path': suite.temp}
-    fileio.write_yaml(old, prefs.launcher_prefs_file('Wayward', create=True))
-    selections = prefs.Selections.load('Wayward')
+    fileio.write_yaml(old, prefs.launcher_prefs_file('SampleGame', create=True))
+    selections = prefs.Selections.load('SampleGame')
     suite.check('an old preferences file keeps its Unreal projects',
                 selections.unreal_projects == [os.path.join(suite.temp, 'game.uproject')],
                 str(selections.unreal_projects))
@@ -167,13 +167,13 @@ def body(suite):
                 selections.chosen('maya', ['2026', '2025', '2024']) == '2026')
 
     selections.choose('maya', '2025')
-    selections.save('Wayward')
+    selections.save('SampleGame')
     suite.check('a choice is remembered by name',
-                prefs.Selections.load('Wayward').dccs == {'maya': '2025'},
-                str(prefs.Selections.load('Wayward').dccs))
+                prefs.Selections.load('SampleGame').dccs == {'maya': '2025'},
+                str(prefs.Selections.load('SampleGame').dccs))
     suite.check('and a remembered version that is no longer installed falls back to the '
                 'newest that is',
-                prefs.Selections.load('Wayward').chosen('maya', ['2026', '2024']) == '2026')
+                prefs.Selections.load('SampleGame').chosen('maya', ['2026', '2024']) == '2026')
 
     # -- removing ------------------------------------------------------- #
     suite.raises('removing a project that does not exist is refused',
@@ -269,7 +269,7 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # The environment a DCC is handed
     # ---------------------------------------------------------------- #
-    project = prefs.ProjectPrefs.load('Wayward')
+    project = prefs.ProjectPrefs.load('SampleGame')
     values = environment.build(project, 'maya', '2025',
                               base={'PATH': '/usr/bin', 'PYTHONPATH': '/somebody/elses/path',
                                     'QT_PLUGIN_PATH': '/the/launchers/qt'})
@@ -334,13 +334,13 @@ def body(suite):
     # Desktop shortcuts
     # ---------------------------------------------------------------- #
     suite.check('a shortcut is named the way a person would write it',
-                shortcuts.shortcut_name('Maya', '2025', 'Wayward') == 'Maya 2025 - Wayward',
-                shortcuts.shortcut_name('Maya', '2025', 'Wayward'))
+                shortcuts.shortcut_name('Maya', '2025', 'SampleGame') == 'Maya 2025 - SampleGame',
+                shortcuts.shortcut_name('Maya', '2025', 'SampleGame'))
     suite.check('an Unreal one is named after the project file, not its path',
-                shortcuts.shortcut_name('Unreal Engine', r'D:\Games\Wayward.uproject',
-                                        'Wayward') == 'Unreal Engine Wayward - Wayward',
-                shortcuts.shortcut_name('Unreal Engine', r'D:\Games\Wayward.uproject',
-                                        'Wayward'))
+                shortcuts.shortcut_name('Unreal Engine', r'D:\Games\SampleGame.uproject',
+                                        'SampleGame') == 'Unreal Engine SampleGame - SampleGame',
+                shortcuts.shortcut_name('Unreal Engine', r'D:\Games\SampleGame.uproject',
+                                        'SampleGame'))
     suite.check('and nothing Windows refuses to have in a file name survives',
                 '/' not in shortcuts.shortcut_name('Maya', '2025', 'A/B:C') and
                 ':' not in shortcuts.shortcut_name('Maya', '2025', 'A/B:C'),

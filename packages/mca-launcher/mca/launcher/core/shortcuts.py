@@ -11,8 +11,8 @@ with ``--launch``, which is the same ``api.launch`` the window calls, and that c
 and refuses if the packages are not ready. What it skips is the window, not the guarantee.
 
 A shortcut carries the project it was made for by name, because a shortcut whose behaviour
-depends on a setting you cannot see from the desktop is a trap. "Maya 2025 - Wayward" opens
-Maya 2025 for Wayward, today and in a year.
+depends on a setting you cannot see from the desktop is a trap. "Maya 2025 - SampleGame" opens
+Maya 2025 for SampleGame, today and in a year.
 
 Writing the ``.lnk`` itself is done by PowerShell's ``WScript.Shell``, which is on every
 Windows machine. pywin32 would be a dependency for one call, and a ``.url`` file cannot carry

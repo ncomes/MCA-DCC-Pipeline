@@ -312,7 +312,7 @@ def create_shortcut(dcc, key=None, project=None, folder='', name=''):
     :param str key: The version, or for Unreal the project path. None uses what is picked.
     :param str project: The project. None uses the current one.
     :param str folder: Where to write it. Empty means the desktop.
-    :param str name: What to call it, without .lnk. Empty means "Maya 2025 - Wayward".
+    :param str name: What to call it, without .lnk. Empty means "Maya 2025 - SampleGame".
     :return: Response whose result is the shortcut's path.
     :rtype: dict
     """

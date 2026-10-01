@@ -75,13 +75,13 @@ def body(suite):
     config.DEPOT_MODULES.update({'mca-good': 'good', 'mca-angry': 'angry',
                                  'mca-quiet': 'quiet'})
 
-    project_root = os.path.join(temp, 'Wayward')
+    project_root = os.path.join(temp, 'SampleGame')
     os.makedirs(project_root)
     yamlio.write_to_yaml_file(
-        {consts.MCA_PROJECT_NAME: 'Wayward',
+        {consts.MCA_PROJECT_NAME: 'SampleGame',
          consts.MCA_PROJECT_ROOT: project_root,
          consts.MCA_FRAMEWORK_PATH: packages},
-        project_paths.get_preferences_file('Wayward'))
+        project_paths.get_preferences_file('SampleGame'))
     os.environ[consts.MCA_FRAMEWORK_PATH] = packages
 
     # ---------------------------------------------------------------- #
@@ -136,7 +136,7 @@ def body(suite):
     # Starting
     # ---------------------------------------------------------------- #
     startup.STATE.update({'loaded': False, 'project': '', 'dcc': '', 'config_file': ''})
-    ok = startup.startup_init('Wayward', 'maya', config_file=config_path, quiet=True)
+    ok = startup.startup_init('SampleGame', 'maya', config_file=config_path, quiet=True)
     suite.check('the framework starts', ok and startup.STATE['loaded'], str(startup.STATE))
 
     import mca.good.startup.startup as good_startup  # noqa: E402
@@ -150,20 +150,20 @@ def body(suite):
     # The bug: the early return sat inside "if not quiet", so a quiet caller ran the whole
     # start-up again on an already-started framework.
     good_startup.STARTED[:] = []
-    again = startup.startup_init('Wayward', 'maya', config_file=config_path, quiet=True)
+    again = startup.startup_init('SampleGame', 'maya', config_file=config_path, quiet=True)
     suite.check('starting again when it is already up does nothing, even when quiet',
                 again and good_startup.STARTED == [], str(good_startup.STARTED))
     suite.check('unless it is asked to',
-                startup.startup_init('Wayward', 'maya', config_file=config_path, quiet=True,
+                startup.startup_init('SampleGame', 'maya', config_file=config_path, quiet=True,
                                      force=True) and good_startup.STARTED == ['up'],
                 str(good_startup.STARTED))
 
     ok = startup.startup_init('', 'maya', quiet=True)
     suite.check('starting with no project refuses', not ok)
-    ok = startup.startup_init('Wayward', '', quiet=True)
+    ok = startup.startup_init('SampleGame', '', quiet=True)
     suite.check('and so does starting with no DCC', not ok)
 
-    missing_config = startup.startup_init('Wayward', 'maya',
+    missing_config = startup.startup_init('SampleGame', 'maya',
                                           config_file=os.path.join(temp, 'nope.config'),
                                           quiet=True, force=True)
     suite.check('a boot config that is not there is refused, rather than half a start-up',
@@ -172,7 +172,7 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # Stopping
     # ---------------------------------------------------------------- #
-    startup.startup_init('Wayward', 'maya', config_file=config_path, quiet=True, force=True)
+    startup.startup_init('SampleGame', 'maya', config_file=config_path, quiet=True, force=True)
     good_startup.STARTED[:] = []
     os.environ['MCA_SOMETHING_TEMPORARY'] = 'x'
     stopped = startup.shutdown(quiet=True)

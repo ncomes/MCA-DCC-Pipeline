@@ -1,7 +1,7 @@
 """
 What a desktop shortcut starts: one DCC, one project, no window - usually.
 
-    pythonw open_dcc.py maya:2025 --project Wayward
+    pythonw open_dcc.py maya:2025 --project SampleGame
 
 Run directly by a ``.lnk``, so it puts the package on ``sys.path`` itself: a shortcut cannot
 set an environment variable, and a script started by its own path has only its own folder
@@ -59,7 +59,7 @@ def complain(title, message):
 
 def main(argv=None):
     """
-    :param list(str) argv: ``['maya:2025', '--project', 'Wayward']``, or None for sys.argv.
+    :param list(str) argv: ``['maya:2025', '--project', 'SampleGame']``, or None for sys.argv.
     :return: The exit code.
     :rtype: int
     """

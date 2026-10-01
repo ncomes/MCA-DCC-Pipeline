@@ -129,20 +129,20 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # one clip
     # ---------------------------------------------------------------- #
-    entry = clip_module.AnimClip.create(name='Idle_01', character='frostwind')
+    entry = clip_module.AnimClip.create(name='Idle_01', character='clockwork')
     suite.check('a new clip is an animation, and cannot be applied to anything yet',
                 not entry.is_pose and not entry.is_applicable)
-    pose = clip_module.AnimClip.create(name='Wave', character='frostwind', clip_type='pose')
+    pose = clip_module.AnimClip.create(name='Wave', character='clockwork', clip_type='pose')
     suite.check('a pose says so, and its id carries its character',
-                pose.is_pose and pose.clip_id == 'frostwind_wave', pose.clip_id)
+                pose.is_pose and pose.clip_id == 'clockwork_wave', pose.clip_id)
     suite.check('so the same clip name on two characters is two clips',
                 clip_module.AnimClip.create(name='Wave', character='agent_male').clip_id !=
                 pose.clip_id)
-    entry.set_artifact('curves', 'clips/frostwind/Poses/Wave.ma')
+    entry.set_artifact('curves', 'clips/clockwork/Poses/Wave.ma')
     suite.check('a clip with curves can be put back on a rig',
                 entry.is_applicable and entry.has_curves)
     entry.set_artifact('curves', '')
-    entry.set_artifact('fbx', 'clips/frostwind/Poses/Wave.fbx')
+    entry.set_artifact('fbx', 'clips/clockwork/Poses/Wave.fbx')
     suite.check('and so can one with only a baked skeleton, the slower way',
                 entry.is_applicable and not entry.has_curves and entry.has_baked_joints)
     suite.check('an artifact kind nobody has heard of is refused',
@@ -151,7 +151,7 @@ def body(suite):
     suite.check('a field nobody has heard of is an AttributeError, so a typo surfaces',
                 bool(suite.raises('an unknown field raises', getattr, entry, 'frame_rnge')))
 
-    timed = clip_module.AnimClip.create(name='Run', character='frostwind',
+    timed = clip_module.AnimClip.create(name='Run', character='clockwork',
                                         frame_range=[10, 40], fps=30.0)
     suite.check('a clip knows how long it is, in frames and in seconds',
                 timed.duration == 30 and timed.duration_seconds == 1.0)
@@ -159,9 +159,9 @@ def body(suite):
                 clip_module.AnimClip({'frame_range': 'not a range'}).duration == 0.0 and
                 clip_module.AnimClip({'fps': 0}).duration_seconds == 0.0)
     suite.check('a search reaches its name, character, category, tags and description',
-                clip_module.AnimClip.create(name='Run', character='frostwind',
+                clip_module.AnimClip.create(name='Run', character='clockwork',
                                             tags=['fast', 'loop']).matches('fast run') and
-                not clip_module.AnimClip.create(name='Run', character='frostwind').matches('slow'))
+                not clip_module.AnimClip.create(name='Run', character='clockwork').matches('slow'))
 
     # ---------------------------------------------------------------- #
     # folders
@@ -169,35 +169,35 @@ def body(suite):
     animlib_api.get_catalog(force_reload=True)
     library = animlib_api.get_catalog().library_root
 
-    made = animlib_api.create_folder('frostwind', 'Locomotion')
+    made = animlib_api.create_folder('clockwork', 'Locomotion')
     suite.check('a folder can be made, and is really there',
                 made['ok'] and os.path.isdir(made['result']['path']) and
                 made['result']['created'], made['message'])
-    again = animlib_api.create_folder('frostwind', 'Locomotion')
+    again = animlib_api.create_folder('clockwork', 'Locomotion')
     suite.check('making it twice is not an error, and says it was already there',
                 again['ok'] and not again['result']['created'])
-    listed = animlib_api.list_folders('frostwind')
+    listed = animlib_api.list_folders('clockwork')
     suite.check('an empty folder still lists, with no clips in it',
                 'Locomotion' in [row['category'] for row in listed['result']] and
                 listed['result'][0]['clips'] == 0 and 'empty' in listed['message'],
                 listed['message'])
     for bad in ('a/b', 'a\\b', '..'):
         suite.check('a folder called {0!r} is refused'.format(bad),
-                    animlib_api.create_folder('frostwind', bad)['ok'] is False)
+                    animlib_api.create_folder('clockwork', bad)['ok'] is False)
     suite.check('and a folder needs a character to belong to',
                 animlib_api.create_folder('', 'Locomotion')['ok'] is False)
 
-    gone = animlib_api.remove_folder('frostwind', 'Locomotion')
+    gone = animlib_api.remove_folder('clockwork', 'Locomotion')
     suite.check('an empty folder can be removed',
                 gone['ok'] and not os.path.isdir(
-                    catalog_module.category_folder(library, 'frostwind', 'Locomotion')),
+                    catalog_module.category_folder(library, 'clockwork', 'Locomotion')),
                 gone['message'])
-    stray = catalog_module.category_folder(library, 'frostwind', 'Scratch')
+    stray = catalog_module.category_folder(library, 'clockwork', 'Scratch')
     touch(os.path.join(stray, 'notes.txt'))
     suite.check('a folder with somebody else\'s files in it is not quietly deleted',
-                animlib_api.remove_folder('frostwind', 'Scratch')['ok'] is False)
+                animlib_api.remove_folder('clockwork', 'Scratch')['ok'] is False)
     suite.check('unless the caller insists',
-                animlib_api.remove_folder('frostwind', 'Scratch', force=True)['ok'])
+                animlib_api.remove_folder('clockwork', 'Scratch', force=True)['ok'])
 
     # ---------------------------------------------------------------- #
     # the catalog
@@ -207,10 +207,10 @@ def body(suite):
     recording.checked_out = []
     recording.added = []
 
-    touch(os.path.join(library, 'clips', 'frostwind', 'Locomotion', 'Run_01.ma'))
+    touch(os.path.join(library, 'clips', 'clockwork', 'Locomotion', 'Run_01.ma'))
     registered = animlib_api.register_clip(
-        name='Run_01', character='frostwind', category='Locomotion',
-        curves_file='clips/frostwind/Locomotion/Run_01.ma',
+        name='Run_01', character='clockwork', category='Locomotion',
+        curves_file='clips/clockwork/Locomotion/Run_01.ma',
         frame_range=[0, 30], fps=30.0, root_motion='travelling', flag_count=42)
     suite.check('a clip can be registered, and is an animation unless it says otherwise',
                 registered['ok'] and registered['result']['clip_type'] == 'animation',
@@ -222,9 +222,9 @@ def body(suite):
 
     recording.added = []
     recording.checked_out = []
-    pose_file = touch(os.path.join(library, 'clips', 'frostwind', 'Poses', 'TPose.ma'))
-    pose = animlib_api.register_clip(name='TPose', character='frostwind', category='Poses',
-                                     curves_file='clips/frostwind/Poses/TPose.ma',
+    pose_file = touch(os.path.join(library, 'clips', 'clockwork', 'Poses', 'TPose.ma'))
+    pose = animlib_api.register_clip(name='TPose', character='clockwork', category='Poses',
+                                     curves_file='clips/clockwork/Poses/TPose.ma',
                                      frame_range=[7, 7], clip_type='pose')
     suite.check('a pose can be registered, and keeps its type',
                 pose['ok'] and pose['result']['clip_type'] == 'pose', pose['message'])
@@ -232,10 +232,10 @@ def body(suite):
                 catalog_file in recording.checked_out and catalog_file not in recording.added)
 
     suite.check('a clip type nobody has heard of is refused',
-                animlib_api.register_clip(name='X', character='frostwind',
+                animlib_api.register_clip(name='X', character='clockwork',
                                           clip_type='sketch')['ok'] is False)
     suite.check('and registering the same clip twice is refused',
-                animlib_api.register_clip(name='Run_01', character='frostwind',
+                animlib_api.register_clip(name='Run_01', character='clockwork',
                                           category='Locomotion')['ok'] is False)
 
     suite.check('poses and animations can be listed apart, or together',
@@ -247,7 +247,7 @@ def body(suite):
     suite.check('an unknown type to filter by is refused rather than answering nothing',
                 animlib_api.list_clips(clip_type='sketch')['ok'] is False)
 
-    held = animlib_api.remove_folder('frostwind', 'Locomotion')
+    held = animlib_api.remove_folder('clockwork', 'Locomotion')
     suite.check('a folder with clips in it is not removed by accident, and the refusal names '
                 'them',
                 held['ok'] is False and 'Run_01' in held['message'], held['message'])
@@ -263,49 +263,49 @@ def body(suite):
     suite.check('a file that has gone missing is reported',
                 len(health['result']['missing_files']) == 1, str(health['result'])[:200])
     suite.check('and a one-frame animation is flagged as having no length',
-                'frostwind_tpose' in health['result']['zero_length'])
+                'clockwork_tpose' in health['result']['zero_length'])
     touch(pose_file)
     suite.check('putting the file back clears the complaint',
                 not animlib_api.check_library()['result']['missing_files'])
 
-    updated = animlib_api.update_clip('frostwind_run_01', {'tags': ['locomotion', 'fast']})
+    updated = animlib_api.update_clip('clockwork_run_01', {'tags': ['locomotion', 'fast']})
     suite.check('a clip can be updated, and it sticks',
                 updated['ok'] and
-                animlib_api.get_clip('frostwind_run_01')['result']['tags'] ==
+                animlib_api.get_clip('clockwork_run_01')['result']['tags'] ==
                 ['locomotion', 'fast'], updated['message'])
     suite.check('an update to an unknown clip type is refused',
-                animlib_api.update_clip('frostwind_run_01', {'clip_type': 'sketch'})['ok']
+                animlib_api.update_clip('clockwork_run_01', {'clip_type': 'sketch'})['ok']
                 is False)
     suite.check('search reaches the tags',
                 [c['name'] for c in animlib_api.search_clips('fast')['result']] == ['Run_01'])
-    missing = animlib_api.get_clip('frostwind_run_02')
+    missing = animlib_api.get_clip('clockwork_run_02')
     suite.check('a clip nobody has is refused, with something to try instead',
                 missing['ok'] is False and 'Did you mean' in missing['message'],
                 missing['message'])
 
     # -- what is actually on disk ------------------------------------- #
     suite.check('the characters and categories on disk can be found without the catalog',
-                'frostwind' in catalog_module.disk_characters(library) and
-                'Locomotion' in catalog_module.disk_categories(library, 'frostwind'),
+                'clockwork' in catalog_module.disk_characters(library) and
+                'Locomotion' in catalog_module.disk_categories(library, 'clockwork'),
                 str(catalog_module.disk_characters(library)))
     suite.check('and asking about a character that is not there answers nothing',
                 catalog_module.disk_categories(library, 'nobody') == [] and
                 catalog_module.disk_categories(library, '') == [])
     suite.check('a clip\'s folder is where the catalog says it is',
-                catalog_module.category_folder(library, 'frostwind', 'Locomotion') ==
-                os.path.normpath(os.path.join(library, 'clips', 'frostwind', 'Locomotion')))
+                catalog_module.category_folder(library, 'clockwork', 'Locomotion') ==
+                os.path.normpath(os.path.join(library, 'clips', 'clockwork', 'Locomotion')))
 
     # A hand-edited catalog with a record missing its id still loads.
     hand_edited = catalog_module.AnimCatalog(library_root=library, data={'clips': [
-        {'name': 'Hand Written', 'character': 'frostwind'},
-        {'name': 'Twice', 'character': 'frostwind', 'clip_id': 'frostwind_twice'},
-        {'name': 'Twice Again', 'character': 'frostwind', 'clip_id': 'frostwind_twice'},
+        {'name': 'Hand Written', 'character': 'clockwork'},
+        {'name': 'Twice', 'character': 'clockwork', 'clip_id': 'clockwork_twice'},
+        {'name': 'Twice Again', 'character': 'clockwork', 'clip_id': 'clockwork_twice'},
         'not a record at all',
-        {'character': 'frostwind'},
+        {'character': 'clockwork'},
     ]})
     suite.check('a hand-edited catalog loads: an id is derived where one is missing, a '
                 'duplicate keeps the first, and nonsense is stepped over',
-                len(hand_edited) == 2 and 'frostwind_hand_written' in hand_edited,
+                len(hand_edited) == 2 and 'clockwork_hand_written' in hand_edited,
                 str(sorted(entry.clip_id for entry in hand_edited.sorted_clips())))
 
     # ---------------------------------------------------------------- #
@@ -313,15 +313,15 @@ def body(suite):
     # ---------------------------------------------------------------- #
     characters = os.path.join(suite.temp, 'depot', 'Characters')
     for relative in (
-            os.path.join('Heroes', 'Frostwind', 'Animations', 'Locomotion', 'Run_01.ma'),
-            os.path.join('Heroes', 'Frostwind', 'Animations', 'POSES', 'TPose.ma'),
-            os.path.join('Heroes', 'Frostwind', 'Animations', 'Loose_File.ma'),
-            os.path.join('Heroes', 'Frostwind', '_Source', 'Animations', 'Abilities', 'Cast.ma'),
+            os.path.join('Heroes', 'Clockwork', 'Animations', 'Locomotion', 'Run_01.ma'),
+            os.path.join('Heroes', 'Clockwork', 'Animations', 'POSES', 'TPose.ma'),
+            os.path.join('Heroes', 'Clockwork', 'Animations', 'Loose_File.ma'),
+            os.path.join('Heroes', 'Clockwork', '_Source', 'Animations', 'Abilities', 'Cast.ma'),
             # Every one of these must be left out.
-            os.path.join('Heroes', 'Frostwind', 'Animations', 'incrementalSave', 'Run_01.ma'),
-            os.path.join('Heroes', 'Frostwind', 'Animations', 'Locomotion', 'test_Run.ma'),
-            os.path.join('Heroes', 'Frostwind', 'Animations', 'Locomotion', 'Run_01.ma.bak'),
-            os.path.join('Heroes', 'Frostwind', 'Meshes', 'SK_Frostwind.ma'),
+            os.path.join('Heroes', 'Clockwork', 'Animations', 'incrementalSave', 'Run_01.ma'),
+            os.path.join('Heroes', 'Clockwork', 'Animations', 'Locomotion', 'test_Run.ma'),
+            os.path.join('Heroes', 'Clockwork', 'Animations', 'Locomotion', 'Run_01.ma.bak'),
+            os.path.join('Heroes', 'Clockwork', 'Meshes', 'SK_Clockwork.ma'),
     ):
         touch(os.path.join(characters, relative), '//')
 
@@ -338,14 +338,14 @@ def body(suite):
 
     suite.check('a category comes from the first folder below Animations',
                 extract_plan.derive_category(
-                    os.path.join(characters, 'Heroes', 'Frostwind', 'Animations', 'Locomotion',
+                    os.path.join(characters, 'Heroes', 'Clockwork', 'Animations', 'Locomotion',
                                  'Run_01.ma'),
-                    os.path.join(characters, 'Heroes', 'Frostwind', 'Animations')) ==
+                    os.path.join(characters, 'Heroes', 'Clockwork', 'Animations')) ==
                 'Locomotion')
     suite.check('a file sitting loose in Animations has no category of its own',
                 extract_plan.derive_category(
-                    os.path.join(characters, 'Heroes', 'Frostwind', 'Animations', 'Loose.ma'),
-                    os.path.join(characters, 'Heroes', 'Frostwind', 'Animations')) ==
+                    os.path.join(characters, 'Heroes', 'Clockwork', 'Animations', 'Loose.ma'),
+                    os.path.join(characters, 'Heroes', 'Clockwork', 'Animations')) ==
                 'Uncategorised')
     # The depot has both Poses and POSES, and left alone they are two rows in the browser.
     suite.check('spellings that differ only in case fold together',
@@ -355,19 +355,19 @@ def body(suite):
                 extract_plan.normalise_category('MainLocomotion') == 'MainLocomotion')
 
     asset_id, folder = extract_plan.character_for_path(
-        os.path.join(characters, 'Heroes', 'Frostwind', '_Source', 'Animations', 'Abilities',
+        os.path.join(characters, 'Heroes', 'Clockwork', '_Source', 'Animations', 'Abilities',
                      'Cast.ma'), characters)
     suite.check('a clip under _Source/Animations still belongs to the character above it',
-                folder == 'Frostwind' and asset_id == 'frostwind',
+                folder == 'Clockwork' and asset_id == 'clockwork',
                 '{0} {1}'.format(asset_id, folder))
     mapped, _ = extract_plan.character_for_path(
-        os.path.join(characters, 'Heroes', 'Frostwind', 'Animations', 'Run_01.ma'), characters,
-        name_to_asset_id={'frostwind': 'characters_frostwind'})
+        os.path.join(characters, 'Heroes', 'Clockwork', 'Animations', 'Run_01.ma'), characters,
+        name_to_asset_id={'clockwork': 'characters_clockwork'})
     suite.check('and a character in the asset list is named by its asset id',
-                mapped == 'characters_frostwind', mapped)
+                mapped == 'characters_clockwork', mapped)
 
     plan = extract_plan.build_plan(characters,
-                                   name_to_asset_id={'frostwind': 'characters_frostwind'})
+                                   name_to_asset_id={'clockwork': 'characters_clockwork'})
     suite.check('a plan is built without opening a single scene',
                 plan['entries'] and all(entry['status'] == extract_plan.STATUS_PENDING
                                         for entry in plan['entries']),

@@ -28,7 +28,7 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # Round trips
     # ---------------------------------------------------------------- #
-    data = {'name': 'Wayward', 'rigs': ['hero', 'villain'], 'count': 3, 'deep': {'a': 1}}
+    data = {'name': 'SampleGame', 'rigs': ['hero', 'villain'], 'count': 3, 'deep': {'a': 1}}
 
     for name, write, read in (('yaml', yamlio.write_to_yaml_file, yamlio.read_yaml_file),
                               ('json', jsonio.write_to_json_file, jsonio.read_json_file)):

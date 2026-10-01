@@ -10,8 +10,8 @@ the kind that answers *something* - so nothing ever raised and nobody found out:
   ``in``, so asking for ``rig`` found ``rigging_old`` first, and returned a string when
   given a name and a list when not - so a caller had to know which it was going to be.
 - ``to_relative_path`` and ``to_full_path`` split the path on the *last* occurrence of the
-  project folder's name, so a path with the project name in it twice - ``E:/Wayward/art/
-  Wayward/hero.ma``, which is exactly what an art folder named after the project looks like -
+  project folder's name, so a path with the project name in it twice - ``E:/SampleGame/art/
+  SampleGame/hero.ma``, which is exactly what an art folder named after the project looks like -
   came back as ``hero.ma``, silently missing a folder.
 """
 
@@ -161,8 +161,8 @@ def to_relative_path(file_path, remove_path=None):
     full = os.path.normpath(file_path)
     root = os.path.normpath(root)
     try:
-        # relpath, not a split on the folder's name: a project called Wayward with an art
-        # folder called Wayward inside it used to lose everything up to the second one.
+        # relpath, not a split on the folder's name: a project called SampleGame with an art
+        # folder called SampleGame inside it used to lose everything up to the second one.
         relative = os.path.relpath(full, root)
     except ValueError:
         # Different drives on Windows.

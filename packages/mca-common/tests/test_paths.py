@@ -56,10 +56,10 @@ def body(suite):
                 project_paths.get_preferences_root(),
                 project_paths.get_local_preferences_folder())
 
-    os.environ[consts.MCA_PROJECT_NAME] = 'Wayward'
+    os.environ[consts.MCA_PROJECT_NAME] = 'SampleGame'
     folder = project_paths.get_local_preferences_folder()
     suite.check('with one set, it is under the root, by name',
-                folder.endswith('Wayward'), folder)
+                folder.endswith('SampleGame'), folder)
     suite.check('and the file is the one the launcher writes',
                 project_paths.get_preferences_file().endswith(consts.MCA_LOCAL_PREFS_FILE),
                 project_paths.get_preferences_file())
@@ -70,19 +70,19 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # A project, put into the environment
     # ---------------------------------------------------------------- #
-    project_root = os.path.join(temp, 'Wayward')
+    project_root = os.path.join(temp, 'SampleGame')
     framework = os.path.join(temp, 'repo', 'packages')
     os.makedirs(os.path.join(framework, 'mca-common', 'mca', 'common', 'resources'))
     os.makedirs(project_root)
 
-    saved = {consts.MCA_PROJECT_NAME: 'Wayward',
+    saved = {consts.MCA_PROJECT_NAME: 'SampleGame',
              consts.MCA_PROJECT_ROOT: project_root,
              consts.MCA_FRAMEWORK_PATH: framework,
              consts.MCA_CHARACTERS_PATH: os.path.join(temp, 'art', 'Characters'),
              consts.MCA_PROPS_PATH: ''}
-    yamlio.write_to_yaml_file(saved, project_paths.get_preferences_file('Wayward'))
+    yamlio.write_to_yaml_file(saved, project_paths.get_preferences_file('SampleGame'))
 
-    envs = project_paths.ProjectEnvs('Wayward')
+    envs = project_paths.ProjectEnvs('SampleGame')
     suite.check('a project reads its preferences',
                 envs.values.get(consts.MCA_PROJECT_ROOT) == project_root, str(envs.values))
     suite.check('and says nothing is missing when the two that matter are there',
@@ -174,18 +174,18 @@ def body(suite):
     # ---------------------------------------------------------------- #
     # Project relative
     # ---------------------------------------------------------------- #
-    root = os.path.join(temp, 'Wayward')
+    root = os.path.join(temp, 'SampleGame')
     inside = os.path.join(root, 'art', 'hero.ma')
     suite.check('a path under the project comes back relative',
                 path_utils.to_relative_path(inside, root) == os.path.join('art', 'hero.ma'),
                 path_utils.to_relative_path(inside, root))
 
     # The one that used to lose folders: the project's name appearing twice in the path.
-    twice = os.path.join(root, 'art', 'Wayward', 'hero.ma')
+    twice = os.path.join(root, 'art', 'SampleGame', 'hero.ma')
     suite.check('and so does one with the project name in it twice, which is what an art '
                 'folder named after the project looks like',
                 path_utils.to_relative_path(twice, root) ==
-                os.path.join('art', 'Wayward', 'hero.ma'),
+                os.path.join('art', 'SampleGame', 'hero.ma'),
                 path_utils.to_relative_path(twice, root))
 
     outside = os.path.join(temp, 'elsewhere', 'hero.ma')

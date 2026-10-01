@@ -9,7 +9,7 @@ mca-launcher --doctor                why will this not start
 mca-launcher --dccs                  what is installed on this machine
 mca-launcher --deps maya:2025        are its dependencies ready
 mca-launcher --install-deps maya:2025
-mca-launcher --launch maya:2025 --project Wayward
+mca-launcher --launch maya:2025 --project SampleGame
 mca-launcher --launch maya --json    the same, as data
 ```
 
@@ -31,7 +31,7 @@ version by name; each entry acts on that version.
 that project with no launcher window:
 
 ```
-mca-launcher --shortcut maya:2025 --project Wayward
+mca-launcher --shortcut maya:2025 --project SampleGame
 ```
 
 The shortcut carries the project **by name** — one that meant "whichever project is current"

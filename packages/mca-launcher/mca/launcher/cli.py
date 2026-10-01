@@ -11,8 +11,8 @@ agent that has been asked why Maya will not start::
     mca-launcher --deps maya:2025
     mca-launcher --install-deps maya:2025
     mca-launcher --launch maya:2025
-    mca-launcher --launch maya --project Wayward --json
-    mca-launcher --shortcut maya:2025 --project Wayward
+    mca-launcher --launch maya --project SampleGame --json
+    mca-launcher --shortcut maya:2025 --project SampleGame
 
 ``--json`` prints the response as it comes back from the API, which is the form an agent
 should read. Without it, the message is printed for a person. The exit code is 0 for ok and

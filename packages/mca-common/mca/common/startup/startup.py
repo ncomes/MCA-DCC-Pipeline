@@ -3,7 +3,7 @@ Starting the framework inside a DCC, and stopping it again.
 
     from mca.common.startup import startup
 
-    startup.startup_init('Wayward', 'maya')
+    startup.startup_init('SampleGame', 'maya')
     startup.restart()
     startup.shutdown('maya')
 
@@ -56,7 +56,7 @@ def startup_init(project_name, dcc, config_file=None, quiet=False, force=False):
     """
     Put the framework on the path for a project and a DCC.
 
-    :param str project_name: The project, for example 'Wayward'.
+    :param str project_name: The project, for example 'SampleGame'.
     :param str dcc: 'maya', 'mobu', 'ue' or 'common'.
     :param str config_file: The boot config. None finds it under the framework path.
     :param bool quiet: Say nothing unless something is wrong.
