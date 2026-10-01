@@ -153,6 +153,12 @@ class KeyableComponent(rig_component.RigComponent):
         Every component that can be driven by a skeleton started with its own copy of these twelve
         lines. They are here once.
 
+        One thing worth knowing about the fallback: ``JointMarkup.side`` falls back to Maya's own
+        joint side label when a joint has no ``skelSide``, and that label always has a value - zero,
+        meaning ``center``, on a joint nothing has labelled. So the side almost never falls through
+        to the component's own, while the region often does. A component built for the left over
+        joints carrying no markup looks up the *centre* chain.
+
         :param pm.nt.Joint attach_skeleton_root: The root of the skeleton to look in.
         :return: The joints, root first, or an empty list when nothing on that skeleton matches.
         :rtype: list(pm.nt.Joint)

@@ -38,6 +38,10 @@ COMPONENT_MODULES = (
     'ik_component',
     'fk_component',
     'ikfk_component',
+    'clavicle_component',
+    'cog_component',
+    'pelvis_component',
+    'world_component',
 )
 
 

@@ -80,6 +80,7 @@ any of this.
 | `rigging/frag/animated_curves.py` | ported, 51 checks — restoring animation could put curves on the wrong channels |
 | `rigging/frag/ik_component.py`, `fk_component.py`, `ikfk_component.py` | ported, 93 checks — building a limb wiped the Maya joint labels off the joints it drives, and `offset_flag=True` had never worked |
 | `rigging/frag/mesh_component.py` | ported, 49 checks — the one function that reads a mesh component back has never answered correctly |
+| `rigging/frag/world_component.py`, `cog_component.py`, `pelvis_component.py`, `clavicle_component.py` | ported, 84 checks — a COG's fallback could never reach its last choice, and a clavicle looked its chain up with an attribute object |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1932,3 +1933,66 @@ it — Maya looks for `:hero:hero` and raises `RuntimeError: No namespace matche
 and the depot's own `mesh_component` went to the root first and did not. All four now call
 `namespace.set_namespace(root_namespace, check_existing=False)`, which is the function that exists for
 this, and each of the four suites builds its node with the rig's namespace active.
+
+## The four one-control components — `world`, `cog`, `pelvis`, `clavicle`
+
+Each of these is one control over one joint, and between them they are the top of every rig: the world
+controls that carry a character through a scene, the centre of gravity everything hangs below, the
+pelvis that rocks the hips about the base of the spine, and the clavicle. They are grouped here
+because they share a shape — build a duplicate, stack one control on it, constrain the bind joint to
+the duplicate — and because all four carried their own copy of the twelve-line skeleton lookup that is
+now `KeyableComponent.matching_chain`.
+
+- **A COG's fallback for finding the joint to follow could never reach its last choice, and could
+  hand back None.** A COG is not a joint on a skeleton, so its region and side rarely match the
+  markup, and `attach_to_skeleton` is written to try three things in order: the matching chain, the
+  joint marked as the start of the animatable hierarchy, then the pelvis. The second was
+  `joint_list = [hierarchy_start]` followed by `if not joint_list:` — a one-item list is true whatever
+  is in it, so the pelvis was never looked for, and a skeleton with no hierarchy start gave `[None]`,
+  which the guard below then quietly swallowed. Each choice is asked for on its own terms now, and
+  the suite drives all three plus the case where a skeleton offers none of them.
+- **A clavicle looked its chain up with a pymel `Attribute` instead of a string.** `skel_region =
+  skel_region or self.pynode.region` — that is the attribute object, not the value on it, and it goes
+  straight into a dictionary lookup, which matches nothing. So a clavicle whose own joints carry no
+  `skelRegion` markup — an imported skeleton, which is exactly the case the fallback exists for —
+  silently drove nothing at all. `FKComponent`, which `ClavicleComponent` inherits from, used the
+  properties two lines away from the same spot.
+- **`WorldComponent.attach_to_skeleton` could answer `[None]`.** It returns `[constraint_node]` with
+  no guard, and both the lookup and `parent_constraint_safe` answer None — the lookup when nothing on
+  the skeleton matches, the constraint when every channel it would drive is locked. Every caller then
+  iterates and deletes a list with None in it. Every other component guards that one line.
+- **A pelvis built over a start and end joint that are not a chain raised `IndexError` four lines
+  before the code that looks like it is guarding that.** `duplicate_chain` answers an empty list for a
+  pair it cannot walk between, and the next line is `rev_chain[0].setParent(...)`. The thing that
+  reads like the guard — `for base, reverse in zip(chain_between, rev_chain): …; break`, a loop whose
+  last statement is `break` — comes after it and never protected anything. The question is asked
+  before anything is built now, and refused the way the IK components refuse a chain of the wrong
+  length.
+- **A rebuilt clavicle drew a default-sized control.** `ClavicleComponent.create` calls
+  `FKComponent.create` and then overwrites the whole `buildKwargs` block, which is right — it takes a
+  different argument list — but `scale` was not in the replacement and is not even a parameter. It is
+  both now. That is the third component to record its build arguments wrongly; the suite checks the
+  general property for all four, that every `buildKwargs` key is a parameter of `create`.
+- `WorldComponent.create` walked from the root joint to itself to get a one-item list and then
+  `zip`ped over it to make one constraint. `CogComponent` walked between two joints and threw the
+  answer away — that walk is kept, because `get_between_nodes` warns when the pair is not a chain and
+  that warning is the only reason a COG takes an `end_joint` at all, and it now says so. The pelvis
+  control was marked as a sub control by setting `isSub` by hand next to `Flag.set_as_sub`. The
+  pelvis parented its duplicated chain into the no-touch group twice, four lines apart. The clavicle
+  had `locked_vertices` as a second name for `lock_root_translate_axes`, and there are no vertices
+  anywhere near it.
+- `WorldComponent.get_flags` read all three controls back and wrapped each in `Flag`, so a component
+  that had lost one raised from inside the wrapper rather than saying which was missing.
+
+**Written down rather than fixed.** `ClavicleComponent`'s `lock_root_translate_axes` defaults to
+`['v']` — a visibility channel handed to the parameter named for *translate* axes. `FKComponent` locks
+`['v']` regardless, so the real effect is that every clavicle control ever built has all three
+translate channels free while the parameter name says otherwise. Locking them would change every rig
+built from a template, so the default stands, the constant is named for what it actually is, and the
+suite pins the current behaviour.
+
+**And one thing worth knowing about the shared lookup.** `JointMarkup.side` falls back to Maya's own
+joint side label when a joint has no `skelSide`, and that label always has a value — zero, meaning
+`center`, on a joint nothing has labelled. So in `matching_chain` the side almost never falls through
+to the component's own, while the region often does: a component built for the left, over joints
+carrying no markup, looks up the *centre* chain. That is in `matching_chain`'s docstring now.
