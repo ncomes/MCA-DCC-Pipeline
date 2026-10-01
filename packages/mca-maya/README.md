@@ -87,6 +87,7 @@ any of this.
 | `rigging/frag/twist_fixup_component.py`, `camera_component.py`, `s_sdk_component.py` | ported, 53 checks — one is at version 2 with no step to get there, one spells its version differently from every other component, and one recorded the driving node instead of the driving attribute |
 | `rigging/frag/channel_float_component.py` | ported, 51 checks — building the component emptied the dictionaries it was handed |
 | `rigging/frag/rfk_component.py`, `rfk_stretch_component.py` | ported, 64 checks — the stretchy one was a hundred and thirty lines of copy of the plain one, and both attached nothing unless the control and joint counts matched exactly |
+| `rigging/frag/spline_ik_component.py` | ported, 56 checks — which controls it has was worked out from how many it had |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -2265,3 +2266,49 @@ and skips that axis — deliberately, because constraining over one is how you m
 every axis is skipped `parent_constraint_safe` answers None. An animation curve or an animation layer
 is *not* a rival, so attaching over animation works. Worth knowing before reading an empty list as a
 failure.
+
+## `rigging/frag/spline_ik_component.py` — the tail that pulls back into itself
+
+A spline IK solver bends a chain to follow a curve, and the curve is skinned to a handful of joints, so
+three or four controls shape twenty. On top of that this component builds a *retract*: one attribute
+that walks the chain back down its own curve, each joint travelling and shrinking over its own slice of
+the range, which is how a tongue goes back in a mouth. The scale goes onto leaf joints — one per chain
+joint — so the chain the engine exports stays scale-free.
+
+Three joints outside the chain do the remembering: the end and mid helper joints are driven by the
+controls, so an animator's work survives being baked onto a skeleton and read back. Whether there is a
+*start* helper joint is what decides whether the component has a control at the base.
+
+- **Which controls a component has was worked out from how many it had.** `attach_to_skeleton` read
+  `has_start_flag = len(flag_list) == 3 + int(has_mid_flag)` and then indexed the list — `flag_list[2]`
+  for the end control when there is a start control, `flag_list[1]` when there is not — and the mid
+  control as `flag_list[-1]`. `spline_ik_rig` answers each control under its own name, so the component
+  records them under their own names: `startFlag`, `endFlag`, `auxFlag`, `midFlag`. Nothing is inferred
+  from a count, and nothing indexes a list by a number worked out from one. The same inference drove
+  which attribute the retract was wired through, and how many bind joints to slice off the end.
+- **`attach_component` was a copy of the base one that had drifted.** It disconnects
+  `pointParentAttachments` and `orientParentAttachments` and *not* `pointParentObjects` or
+  `orientParentObjects`, so the two object lists grew every time a component was reattached — and those
+  lists are what a rebuild reads. This is the bug recorded against the base class when `rig_component`
+  was ported, still live in the copy. The copy is gone: this component overrides
+  `get_attachment_groups` to name its own main control group, and adds the one thing that is genuinely
+  its own — pointing the mid control's group at the parent *and* the end control.
+- **`attach_to_skeleton` required the control count and the joint count to match exactly** and did
+  nothing at all, silently, when they did not. Fourth component found with that fault. It also
+  appended `parent_constraint_safe`'s answer with nothing asking whether there was one, so the list it
+  returned could have `None` in it.
+- **The main control group was snapped to the control group and then frozen on the next line**, which
+  puts an empty transform's matrix straight back to identity — the `align_component` fault in a third
+  place. The outcome happens to be the same here, because the group it was snapped to is itself at
+  identity, so the two lines are gone rather than written down as a decision.
+- **A short leaf list left the far end of the chain unscaled, silently.** `zip(driver_joints,
+  chain_between, leaf_joint_list)` truncates to the shortest. The component needs exactly one leaf
+  joint per chain joint and says so now, before anything is built.
+- `if leaf_joint != leaf_joint_list[-1]` asks whether this is the last leaf joint by comparing *nodes*,
+  so a list with the same joint twice in it skips the wrong one. It is an index. Both of the two groups
+  this component adds were parented to the control group's *parent* and then, four lines later, to the
+  control group — four `setParent` calls for two groups. `endFlag` was the one thing wired without a
+  back-pointer, so that control could not say which component it belonged to. The version migration had
+  never run, like the other four; it is reachable now and the suite drives it.
+- A chain too short for a spline IK got as far as a built component with nothing on it: `spline_ctrl`
+  answers `{}` with a warning and `create` carried on. It takes itself back out of the scene.

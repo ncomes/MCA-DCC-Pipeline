@@ -52,6 +52,7 @@ COMPONENT_MODULES = (
     'channel_float_component',
     'rfk_component',
     'rfk_stretch_component',
+    'spline_ik_component',
 )
 
 
