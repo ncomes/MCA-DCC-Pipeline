@@ -52,9 +52,9 @@ What was wrong before:
 - ``get_frag_root`` and ``get_asset_id`` read the node passed to them and never touch ``self``,
   which their own docstrings had to explain; they are static now, and every existing caller - all
   of which call them on an instance - still works. The two node-unwrapping ladders in
-  ``connect_node`` and ``connect_nodes`` were the same ladder twice. ``add_frag_child``,
-  ``set_attr``, ``add_attr``, ``list_attr_connections`` and ``list_frag_node_connections`` had no
-  callers anywhere in the pipeline and are gone.
+  ``connect_node`` and ``connect_nodes`` were the same ladder twice, and are one ``as_pynode`` now.
+  ``add_frag_child``, ``set_attr``, ``add_attr``, ``list_attr_connections`` and
+  ``list_frag_node_connections`` had no callers anywhere in the pipeline and are gone.
 """
 
 # python imports
@@ -95,7 +95,7 @@ SIDE_ATTR = 'side'
 REGION_ATTR = 'region'
 
 
-def _as_pynode(node):
+def as_pynode(node):
     """
     Whatever a caller has handed over, as the Maya node underneath it.
 
@@ -144,7 +144,7 @@ def is_frag_node(node):
             attr_utils.has_attribute(node, LEGACY_FRAG_TYPE_ATTR))
 
 
-def _wrap_or_report(node):
+def wrap_frag_node(node):
     """
     A node as its own FRAGNode subclass, or None with a line in the log saying why not.
 
@@ -175,14 +175,14 @@ def get_frag_parent(node):
     :rtype: FRAGNode or None
     """
 
-    node = _as_pynode(node)
+    node = as_pynode(node)
     if not attr_utils.has_attribute(node, FRAG_PARENT_ATTR):
         return None
 
     parents = node.attr(FRAG_PARENT_ATTR).listConnections()
     if not parents:
         return None
-    return _wrap_or_report(parents[0])
+    return wrap_frag_node(parents[0])
 
 
 def _find_external_frag_node_class(frag_node_type):
@@ -283,7 +283,7 @@ class FRAGNode(metaclass=FRAGNodeRegister):
         if not node:
             return super(FRAGNode, cls).__new__(cls)
 
-        node = _as_pynode(node)
+        node = as_pynode(node)
         if not isinstance(node, pm.nt.Network):
             raise TypeError('{0} is a {1} rather than a network node, so it cannot be a FRAG '
                             'node.'.format(node, node.nodeType()))
@@ -309,7 +309,7 @@ class FRAGNode(metaclass=FRAGNodeRegister):
         :param node: The node to wrap, as a ``FRAGNode``, a ``PyNode`` or a name.
         """
 
-        self.pynode = _as_pynode(node)
+        self.pynode = as_pynode(node)
 
     @staticmethod
     def create(frag_parent, frag_type, version):
@@ -362,7 +362,7 @@ class FRAGNode(metaclass=FRAGNodeRegister):
             component it belongs to as well as the other way round.
         """
 
-        node_to_connect = _as_pynode(node)
+        node_to_connect = as_pynode(node)
         if parent_attr:
             if not node_to_connect.hasAttr(parent_attr):
                 node_to_connect.addAttr(parent_attr, at='message')
@@ -383,7 +383,7 @@ class FRAGNode(metaclass=FRAGNodeRegister):
 
         if not isinstance(connect_nodes, (list, tuple)):
             connect_nodes = [connect_nodes]
-        nodes_to_connect = [_as_pynode(node) for node in connect_nodes]
+        nodes_to_connect = [as_pynode(node) for node in connect_nodes]
 
         if parent_attr:
             attributes = []
@@ -440,7 +440,7 @@ class FRAGNode(metaclass=FRAGNodeRegister):
 
         children = []
         for child_node in self.pynode.attr(FRAG_CHILDREN_ATTR).listConnections():
-            wrapped_node = _wrap_or_report(child_node)
+            wrapped_node = wrap_frag_node(child_node)
             if wrapped_node is None:
                 continue
             if side and wrapped_node.side != side:
@@ -734,7 +734,7 @@ def get_all_frag_nodes(of_type=FRAGNode):
     for node in (cmds.ls(type='network') or []):
         if not is_frag_node(node):
             continue
-        wrapped_node = _wrap_or_report(node)
+        wrapped_node = wrap_frag_node(node)
         if wrapped_node is not None and isinstance(wrapped_node, of_type):
             frag_nodes.append(wrapped_node)
     return frag_nodes

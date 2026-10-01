@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**2,106 checks in 30 suites** so far — 2,122 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
+**2,163 checks in 31 suites** so far — 2,179 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -74,6 +74,7 @@ any of this.
 | `deformations/cluster.py`, `rigging/reference_line.py` (new), `rigging/ik_chain.py` | ported, 70 checks — a cluster built inside a namespace raised `TypeError` |
 | `rigging/skel_utils.py` | ported, 67 checks — exporting over a read-only file failed, and restoring markup cleared every weight lock |
 | `rigging/frag/frag_base.py`, `rigging/frag/__init__.py` | ported, 93 checks — no rig has ever been brought up to a new component version |
+| `rigging/frag/rig_component.py`, `rigging/frag/keyable_component.py` | ported, 57 checks — `align_component` has never aligned anything |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1537,7 +1538,8 @@ method, which `update()` is meant to run.
   own docstrings had to apologise for; they are `staticmethod`s now, and every existing caller — all
   of which call them on an instance — still works. `get_frag_root`'s loop recomputed the same parent
   on the iteration it found the root. The two node-unwrapping ladders in `connect_node` and
-  `connect_nodes` were the same ladder twice, now one `_as_pynode`. `add_frag_child`, `set_attr`,
+  `connect_nodes` were the same ladder twice, now one `as_pynode` — public, along with
+  `wrap_frag_node`, because every module in the package wants both. `add_frag_child`, `set_attr`,
   `add_attr`, `list_attr_connections` and `list_frag_node_connections` have no callers anywhere in
   the pipeline and are gone; the forwarders that do have callers stayed.
 
@@ -1545,3 +1547,62 @@ method, which `update()` is meant to run.
 lets a build script write `frag.FKComponent` without knowing which module defines it. Its
 `COMPONENT_MODULES` lists what has been ported rather than what there will be, the same way the
 package manifest does, and entries come back as the components land.
+
+## `rigging/frag/rig_component.py`, `rigging/frag/keyable_component.py` — what every component has
+
+A rig is built out of components — an arm, a spine, a twist helper, a space switch — and each one is
+a metadata node plus two groups: the controls the animator sees, and a `NO_TOUCH` group holding
+everything that makes them work. `RigComponent` is the half every component has, with or without
+controls; `KeyableComponent` adds the control group and the things that only mean anything once a
+component has both controls and joints.
+
+**`align_component` has never aligned anything, and that one needs a decision.** Both classes take an
+object to snap their groups to, and both snap the group and then `makeIdentity(apply=True)` it on the
+next line. Freezing an empty transform puts its matrix straight back to identity: the rotation is
+discarded outright, the position survives only as the group's rotate and scale pivots, and a child
+parented under the group afterwards lands at the world origin either way — all three verified in
+Maya. So every component that passes `align_component` has been getting nothing from it. It is left
+exactly as it is, because the freeze is what every rig in the depot was built against: making the
+alignment survive would move the two groups, and everything constrained to them with an offset, on
+every rig. Either the alignment was meant to survive and the components that rely on it have been
+building unaligned all along, or the parameter should go — and that is a call to make deliberately,
+not a thing to quietly change under two thousand checks.
+
+- **Attaching a component twice left the objects from the first attachment registered as well.**
+  `attach_component` clears the two *component* lists before writing them again and never touches the
+  two *object* lists, so they grow. `buildarig` reads exactly those object lists to rebuild an
+  attachment, so a component that had been reattached rebuilt against its old parents as well as its
+  new ones. All four lists are cleared now.
+- **`attach_component` read `flagGroup` whether or not the component had one.** It lives on
+  `RigComponent`, which is the base for components with no controls at all — a twist helper, an
+  attachment — and the group it reaches for is added by `KeyableComponent`. It constrains whichever
+  of the two groups the component actually has now.
+- **The two groups a component gets were named with different spellings of the same side.** The side
+  is lower-cased on the way into `RigComponent.create`, which names the `NO_TOUCH` group, and then
+  used as it came in to name the control group — so a component built for `'Left'` came out with
+  `NO_TOUCH_left_arm` beside `flags_Left_arm`, and its markup said `left` while half its node names
+  said `Left`.
+- **`get_bakeable_rig_nodes` counted every control after the first one worth baking as worth
+  baking.** It collects the keyable attributes of every control into one running list and then asks
+  `if constraint_list or attr_list` — the *running* list, not this control's — so once any control in
+  the component had a driven attribute, every control after it went into the bake whether or not
+  anything was driving it.
+- **`bake_to_skeleton` and `get_bakeable_skeleton_nodes` read `bindJoints` without asking whether the
+  component has it**, while the `bind_joints` property sitting between them does ask. A component
+  with no joints — a space switch, a channel holder — raised.
+- **A component built with no parent raised `AttributeError`** in both classes: `create` asks the
+  parent what type it is, and `FRAGNode.create` is happy to be given nothing.
+- **`serialize_component` could not run.** It called `get_point_attach_component`,
+  `get_orient_attach_component` and `get_scale_attach_component`, and **no class anywhere in the
+  pipeline has any of the three**, so any component with a constraint on its `NO_TOUCH` group raised
+  `AttributeError`. It also reset the entry it was about to fill one line above the `if not ...` that
+  was meant to keep the first of several constraints, so that guard could never fire. Nothing called
+  it and nothing anywhere reads the shape it produced — the only serializer the pipeline actually
+  uses is `MultiConstraint`'s, which stands on its own — so it is gone rather than propped up with
+  three methods invented to satisfy it. Dropping it also takes `chain_markup`, `frag_flag` and
+  `lists` out of this module's imports.
+- `childAttachments` is added to every component and **nothing in the pipeline has ever connected
+  anything to it**, so `attached_children` has always answered an empty list. The attribute and its
+  reader stay — a rig built without it would differ from every rig so far for no gain — but what they
+  are is written down rather than left to be found out. `frag_base`'s `as_pynode` and
+  `wrap_frag_node` are public now, because every module in the package wants both.

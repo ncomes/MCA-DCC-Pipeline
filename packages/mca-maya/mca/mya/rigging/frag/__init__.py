@@ -26,6 +26,8 @@ import sys
 #: cannot be imported before the one it subclasses.
 COMPONENT_MODULES = (
     'frag_base',
+    'rig_component',
+    'keyable_component',
 )
 
 
