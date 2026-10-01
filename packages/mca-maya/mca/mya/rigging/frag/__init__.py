@@ -28,6 +28,7 @@ COMPONENT_MODULES = (
     'frag_base',
     'frag_root',
     'skeletal_mesh',
+    'mesh_component',
     'frag_rig',
     'display_layers',
     'rig_component',

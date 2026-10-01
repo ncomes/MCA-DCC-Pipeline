@@ -79,6 +79,7 @@ any of this.
 | `rigging/frag/multi_constraint.py` | ported, 31 checks — a second space switch on a control raised something unreadable |
 | `rigging/frag/animated_curves.py` | ported, 51 checks — restoring animation could put curves on the wrong channels |
 | `rigging/frag/ik_component.py`, `fk_component.py`, `ikfk_component.py` | ported, 93 checks — building a limb wiped the Maya joint labels off the joints it drives, and `offset_flag=True` had never worked |
+| `rigging/frag/mesh_component.py` | ported, 49 checks — the one function that reads a mesh component back has never answered correctly |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1853,3 +1854,81 @@ method name from a version held on a `double` attribute, so it looked for
 is reachable, and the suite drives it end to end: build a component, put its attributes back under the
 old names, set the version to 1, call `update`, and check that each attribute is there under its new
 name and still wired to what it was wired to.
+
+## `rigging/frag/mesh_component.py` — which of a character's meshes is which
+
+A rig is built over a skeleton, but a character is a pile of meshes: the body that gets skinned, the
+head carrying the blendshapes, the source mesh those shapes were sculpted from, eye cards, teeth. A
+tool downstream has to be able to ask for one of them by name instead of guessing at a naming
+convention, so this node holds one compound attribute per *category* — `skin_mesh`,
+`blendshape_mesh`, `source_mesh`, whatever the caller passes — whose children are message attributes
+wired to the meshes. A child can hold one mesh or a list of them, which is how "the left eye's cards"
+fits beside "the head". It hangs under the `SkeletalMesh` node, and on create it moves whatever is in
+the blendshape category under the rig's blendshape group, because that group is what gets hidden and
+left out of the export.
+
+The shape the categories go in is now the shape they come back out in: `get_connections_as_dict`
+answers exactly the dictionary `create` takes, so a node can be rebuilt from one that exists. That is
+a round trip the suite drives, and it is also the thing that was broken.
+
+- **`get_connections_as_dict` has never once answered correctly.** It builds two lists — the meshes
+  wired to a category, and the category's child attributes — and pairs them *by position*, with the
+  attribute list offset by one. They do not line up, for three separate reasons. The offset of one
+  lands on the hidden bool child that `set_compound_attribute_groups` adds to every compound as a
+  channel-box workaround, so the first mesh of every category came back under the key `_hidden`. The
+  mesh list is de-duplicated and skips children with nothing on the end of them, while the attribute
+  list skips nothing, so a single unconnected child shifts everything after it by one. And a child
+  holding a *list* of meshes puts one entry in the attribute list and several in the mesh list.
+  Checked in a real Maya: three meshes under `skin_mesh` came back as
+  `{'_hidden': mesh_a, 'head_mesh': mesh_b, 'mouth_mesh': mesh_c}` — every mesh under the wrong name,
+  and the last attribute dropped off the end. It is built from the attribute side, by name, now. This
+  is the same fault with the same fix as `animated_curves` pairing curves with channels by position,
+  which is twice in `frag/` now: **two lists built differently and then zipped is the shape to look
+  for.**
+- **`get_mesh` and `reconnect_mesh` raised on a node that does not have the category**, from inside
+  the guard that is there to stop exactly that: `pm.hasAttr(self.pynode.attr(category), …)` evaluates
+  `self.pynode.attr(category)` first, which is a `MayaAttributeError` when the category is missing.
+  `get_mesh_list` — the same lookup with a different answer, twenty lines below — checks for the
+  compound first, so two methods beside each other disagreed about whether a missing category is an
+  error. All three go through one lookup now.
+- **`reconnect_mesh` only half reconnected a mesh to a category that holds a list.** It connects to
+  the array attribute itself rather than to an element of it. Maya allows that — checked in a real
+  Maya — and the result is a mesh that appears in the attribute's connections but sits at *no index*:
+  the array's indices are unchanged, so anything walking the list by index misses it and rewriting
+  the category throws it away. It takes the next free element.
+- `get_mesh` and `get_mesh_list` each gave the other's answer for the wrong kind of child: `get_mesh`
+  on a list-holding child answered a list, and `get_mesh_list` on a single-mesh child answered a
+  one-item list. They share a body, and each says what it does with the other kind. `get_mesh_list`
+  also promised a list and answered None when it found nothing — the shape that makes every caller
+  write `or []`. The two questions "there is no such name" and "nothing is wired to that name" have
+  different answers now: None and `[]`.
+- `create` asked its parent for the blendshape group without checking that the parent is a thing that
+  has one. The move is its own method, so a node can be rebuilt in place without rewiring everything.
+
+`get_connections_as_dict`, `remove_category` and `get_all_attrs_from_category` have no callers
+anywhere in the pipeline. They are kept under the standing decision for an unused function that is
+the only way to undo something, or the only place showing how a structure is meant to be walked —
+these are both, and `get_connections_as_dict` is the round trip of `create`, which is the thing a
+rebuild needs.
+
+`face_mesh_component.py` would land here too — it is `MeshComponent` with the face's categories named
+and the common meshes wrapped — but it imports `modeling/face_model.py`, which imports
+`face/face_utils/`. It moves to the `face/` stage.
+
+## Four modules could not build anything while a namespace was active
+
+Found while writing the mesh component's suite, and worth its own note because it is one fault in four
+places. `create` takes the rig's namespace off its parent and makes it current:
+
+```python
+root_namespace = frag_parent.pynode.namespace().split(':')[0]
+pm.namespace(set='{0}:'.format(root_namespace))
+```
+
+`'hero:'` is a *relative* name, resolved against whatever namespace is already active. From the root
+it works. From inside `:hero` — which is where a tool that has just been working on that rig leaves
+it — Maya looks for `:hero:hero` and raises `RuntimeError: No namespace matches name: 'hero:'`.
+`skeletal_mesh`, `multi_constraint`, `ik_component` and `ikfk_component` all had it; `fk_component`
+and the depot's own `mesh_component` went to the root first and did not. All four now call
+`namespace.set_namespace(root_namespace, check_existing=False)`, which is the function that exists for
+this, and each of the four suites builds its node with the rig's namespace active.

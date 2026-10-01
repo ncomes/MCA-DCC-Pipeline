@@ -45,6 +45,7 @@ from mca.mya.rigging.frag import frag_base
 from mca.mya.rigging.frag import keyable_component
 from mca.mya.utils import constraint
 from mca.mya.utils import dag
+from mca.mya.utils import namespace
 
 
 logger = log.MCA_LOGGER
@@ -105,7 +106,11 @@ class IKComponent(keyable_component.KeyableComponent):
                     start_joint, end_joint, len(chain_between)))
 
         root_namespace = frag_parent.pynode.namespace().split(':')[0]
-        pm.namespace(set='{0}:'.format(root_namespace))
+        # set_namespace rather than pm.namespace(set=...): a bare relative name is resolved
+        # against whatever namespace is active, so building this while the active namespace was
+        # already the rig's raised 'No namespace matches name'. set_namespace goes to the root
+        # first.
+        namespace.set_namespace(root_namespace, check_existing=False)
 
         node = keyable_component.KeyableComponent.create(frag_parent,
                                                         IKComponent.__name__,

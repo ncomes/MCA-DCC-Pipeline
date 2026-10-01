@@ -46,6 +46,7 @@ from mca.mya.rigging import matrix_nodes
 from mca.mya.rigging import multi_constraint_rig
 from mca.mya.rigging.frag import frag_base
 from mca.mya.utils import attr_utils
+from mca.mya.utils import namespace
 
 
 logger = log.MCA_LOGGER
@@ -143,7 +144,11 @@ class MultiConstraint(frag_base.FRAGNode):
             return None
 
         root_namespace = frag_parent.pynode.namespace().split(':')[0]
-        pm.namespace(set='{0}:'.format(root_namespace))
+        # set_namespace rather than pm.namespace(set=...): a bare relative name is resolved
+        # against whatever namespace is active, so building this while the active namespace was
+        # already the rig's raised 'No namespace matches name'. set_namespace goes to the root
+        # first.
+        namespace.set_namespace(root_namespace, check_existing=False)
 
         node = frag_base.FRAGNode.create(frag_parent, MultiConstraint.__name__,
                                         version=MultiConstraint.VERSION)

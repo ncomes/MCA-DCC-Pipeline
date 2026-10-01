@@ -196,6 +196,26 @@ def check_removing(suite, pm, frag_base, multi_constraint, multi_constraint_rig)
                 not cmds.objExists(node_name), node_name)
 
 
+def check_namespaces(suite, pm, frag_base, multi_constraint, multi_constraint_rig):
+    import maya.cmds as cmds
+
+    harness.new_scene()
+    if not cmds.namespace(exists='hero'):
+        cmds.namespace(add='hero')
+    cmds.namespace(set=':hero')
+
+    # The bug: `pm.namespace(set='hero:')` is a relative name, resolved against whatever namespace
+    # is active - so building a switch while the active namespace was already the rig's own looked
+    # for ':hero:hero' and raised 'No namespace matches name'. Four modules had it.
+    parent_node, control, targets, switch_node = _switch(pm, frag_base, multi_constraint)
+    suite.check('a switch builds while the active namespace is already the rig\'s, rather than '
+                'raising', switch_node is not None)
+    suite.check('and the active namespace is put back afterwards',
+                cmds.namespaceInfo(currentNamespace=True, absoluteName=True) == ':hero',
+                cmds.namespaceInfo(currentNamespace=True, absoluteName=True))
+    cmds.namespace(set=':')
+
+
 def body(suite):
     harness.add_sibling_packages()
     import pymel.core as pm
@@ -206,6 +226,7 @@ def body(suite):
     check_switching(suite, pm, frag_base, multi_constraint, multi_constraint_rig)
     check_serializing(suite, pm, frag_base, multi_constraint, multi_constraint_rig)
     check_removing(suite, pm, frag_base, multi_constraint, multi_constraint_rig)
+    check_namespaces(suite, pm, frag_base, multi_constraint, multi_constraint_rig)
     suite.note('maya', harness.maya_version())
 
 

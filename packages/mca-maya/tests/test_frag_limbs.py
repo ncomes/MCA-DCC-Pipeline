@@ -563,6 +563,35 @@ def check_the_migration(suite, pm, modules):
 # --------------------------------------------------------------------------------------- #
 # the registry
 # --------------------------------------------------------------------------------------- #
+def check_namespaces(suite, pm, modules):
+    import maya.cmds as cmds
+
+    # The bug: `pm.namespace(set='hero:')` is a relative name, resolved against whatever namespace
+    # is active - so building a component while the active namespace was already the rig's own
+    # looked for ':hero:hero' and raised 'No namespace matches name'. Four modules had it. Each
+    # component gets its own scene: two of them over one chain of bind joints is not a rig.
+    for name, builder in (('IK', modules['ik_component'].IKComponent),
+                          ('IKFK', modules['ikfk_component'].IKFKComponent),
+                          ('FK', modules['fk_component'].FKComponent)):
+        harness.new_scene()
+        if not cmds.namespace(exists='hero'):
+            cmds.namespace(add='hero')
+        cmds.namespace(set=':hero')
+        joints = _skeleton(pm, count=3)
+        root_node, rig = _rig(pm, modules['frag_root'], modules['frag_rig'], joints)
+
+        cmds.namespace(set=':hero')
+        component = builder.create(rig, joints[1], joints[-1], 'left', 'arm')
+        suite.check('an {0} component builds while the active namespace is already the rig\'s, '
+                    'rather than raising'.format(name), component is not None)
+        suite.check('and it lands in that namespace',
+                    component.pynode.namespace() == 'hero:', str(component.pynode.namespace()))
+        suite.check('with the active namespace put back afterwards',
+                    cmds.namespaceInfo(currentNamespace=True, absoluteName=True) == ':hero',
+                    cmds.namespaceInfo(currentNamespace=True, absoluteName=True))
+    cmds.namespace(set=':')
+
+
 def check_the_registry(suite, pm, modules):
     frag_base = modules['frag_base']
 
@@ -606,6 +635,7 @@ def body(suite):
     check_ik(suite, pm, modules)
     check_ikfk(suite, pm, modules)
     check_the_migration(suite, pm, modules)
+    check_namespaces(suite, pm, modules)
     check_the_registry(suite, pm, modules)
     suite.note('maya', harness.maya_version())
 
