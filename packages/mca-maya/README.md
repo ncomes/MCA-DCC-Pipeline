@@ -78,6 +78,7 @@ any of this.
 | `rigging/frag/frag_root.py`, `skeletal_mesh.py`, `frag_rig.py`, `display_layers.py` | ported, 98 checks — reading a rig's scale rewired it; a rig build took other characters' geometry |
 | `rigging/frag/multi_constraint.py` | ported, 31 checks — a second space switch on a control raised something unreadable |
 | `rigging/frag/animated_curves.py` | ported, 51 checks — restoring animation could put curves on the wrong channels |
+| `rigging/frag/ik_component.py`, `fk_component.py`, `ikfk_component.py` | ported, 93 checks — building a limb wiped the Maya joint labels off the joints it drives, and `offset_flag=True` had never worked |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1758,3 +1759,97 @@ the curves that were on it, named so they can be found again.
   in without a word. `_get_compound_attributes` answered None where its docstring promised a list. The
   warning for a node not on a skeleton said the skeleton had no node on it, which is the opposite way
   round. `flag_count` and `obj_count` held objects, not counts.
+
+## `rigging/frag/ik_component.py`, `fk_component.py`, `ikfk_component.py` — the three a limb is made of
+
+An arm or a leg is one of these three: FK, which gives the animator a control per joint nested so the
+shoulder carries the elbow; IK, which gives them one control for where the hand goes and one for
+which way the elbow points; or both at once with an attribute that fades between them. Everything
+larger in a rig — a reverse foot, a ribbon spine, a whole character template — is built out of these.
+All three drive a *duplicate* of the bind chain and constrain the bind joints to the duplicate, which
+is what lets a rig be torn down and rebuilt without the skeleton being touched.
+
+Two things every component that can be driven by an external skeleton needs were written out again in
+each one, so they are in `keyable_component` now: `KeyableComponent.matching_chain`, which finds the
+run of joints on the other skeleton that answers to this component's region and side, and
+`constrain_to_pole_vector`, which drives a pole vector control — the one control in a rig with no
+joint of its own to follow.
+
+- **Building a limb wiped the Maya joint labels off the joints it drives.** `ik_component` copied
+  `side`, `type` and `otherType` from the IK offset control onto the end bind joint and from the pole
+  vector control onto the middle one; `ikfk_component` did the end joint the same way. A control built
+  by `Flag.create` carries the *defaults* for all three, whatever it was built on — verified in a real
+  Maya: side 0, type 0, `otherType` `'jaw'`. So those joints came out labelled centre/none wherever
+  they started. That is not cosmetic. `JointMarkup.side` falls back to Maya's own joint-label enum when
+  a joint carries no `skelSide` markup, which is exactly what an imported skeleton is, so building a
+  rig changed the side the rest of the pipeline reads off the elbow and the wrist. There is no reading
+  under which copying a control's default labelling onto a joint is wanted; the nine lines are gone.
+- **`offset_flag=True` on an FK component had never once worked.** `create` added `offsetFlag` by hand
+  as a plain message attribute and then wired the control to it with `connect_nodes`, which hands a
+  *list* to a non-multi attribute: `RuntimeError (kFailure): Object does not exist`, every time, for as
+  long as the argument has existed. The pre-add is gone — `connect_node` makes the attribute it needs —
+  and the single control goes through `connect_node`.
+- **A rebuilt FK component silently lost its scale setting.** `create` takes `constrain_scale` and
+  wrote it down under `buildKwargs` as `allow_scale`. `allow_scale` is not a parameter, so a rebuild
+  handing the recorded arguments back landed it in the `**kwargs` the signature absorbs and dropped it:
+  every rebuilt stretchy component came back unable to stretch. It is recorded under the name it goes
+  back in through, and `set_scale` reads either name so components already built still answer. The
+  suite checks the general case — that every key in `buildKwargs` is a parameter of `create` — rather
+  than that one name, because this is the second component to get it wrong.
+- **A rebuilt FK or IKFK component drew default-sized controls.** `scale` was never written down at all.
+- **`FKComponent.set_scale` raised on a rig with no scale attribute.** It read `frag_rig.pynode.rigScale`
+  without asking. That used to be hidden by `FRAGRig.rig_scale` adding the attribute as a side effect of
+  being *read* — the fault recorded in `frag_rig`'s own section — and now that reading is just reading,
+  the component says what is missing and leaves the group alone. `FRAGRig.add_rig_scale()` is what wires
+  it, and it calls `set_scale` on every component afterwards, so the order still works out.
+- **`attach_to_skeleton` attached nothing at all, silently, when the rig had more controls than the
+  skeleton had joints.** `if flag_list and len(flag_list) <= len(joint_list)` — so a four-control spine
+  driven from a three-joint markup chain came back with an empty list and no complaint. The controls and
+  joints are paired as far as the shorter of the two goes now, and the mismatch is reported.
+- **`attach_to_skeleton` raised on a short chain, in the IK components.** `joint_list[1]` and
+  `joint_list[2]` were read without asking how long the chain was, and `create_pole_vector_locator`
+  answers `None` for a chain of fewer than three joints — which the next line called `setParent` on.
+  Both go through the shared helpers, which ask.
+- **`IKFKComponent.get_flags` could hand back a list with `None` in it.** It appends six attribute reads
+  and then wraps every one of them in `Flag`, so a component that has lost a control raised from inside
+  the wrapper rather than saying which one was missing.
+- **The chain-length guard said three and accepted four**, in both IK components, and named neither the
+  joints nor the count: `RuntimeError('There can only be 3 joints between start_joint and end_joint
+  inclusively')`. Three or four is `ik_chain`'s own rule — four is a leg with a ball joint — so it is
+  `ik_chain.VALID_CHAIN_LENGTHS`, asked *before* anything is built rather than after the node, the
+  groups and a duplicated chain are already in the scene.
+- `fk_flags[1]` — the elbow or the knee — had two rotate axes locked off by bare index with nothing
+  saying why. It is the middle of the three joints the IK solves over, a hinge; it is named and guarded
+  now. The FK controls were read out of the result twice under two names, the duplicated chain was
+  parented into the no-touch group twice, and the first control's align group was read as a raw
+  attribute, which a control built without one does not have. `get_offset_flag` promised a `Flag` and
+  returned the raw node. `for x in range(len(ctrls))` with `if x == 0 / elif x > 0` is `enumerate`.
+- `FKComponent.set_scale` looked the divide node its rig's components share up with
+  `pm.ls('<namespace>::rig_scale_multi', r=True)` — a search through every namespace, under a name with
+  the colon doubled. One rig's component could find another rig's node. It asks its own namespace now.
+
+**Two findings that came out of writing this, both worth keeping.** `IKFKComponent` locked each
+control's channels as that half of the component was built, and the list it locks includes visibility —
+then wired visibility to the switch afterwards. A locked plug cannot be connected to, so the version of
+this file I first wrote raised `The attribute 'f_left_arm.visibility' is locked and cannot be
+connected`. The original got away with it by locking everything last, which reads like tidiness and is
+load-bearing; it says so now. And the blend reads a constraint's weight aliases as `[0]` and `[1]`, FK
+then IK — true of a fresh constraint, because that is the order the targets are added two lines above,
+but `pm.orientConstraint` on a joint that *already* has one hands back the same node with the new
+targets appended, so those two indexes are then somebody else's weights. It takes the last two.
+
+**A decision left as it is, for Nathan.** `FKComponent.get_start_flag` returns the **last** control and
+`get_end_flag` the **first**. `fk_chain` builds its `flags` list root first, so the two names are the
+wrong way round and always have been — but around twenty callers in the rig templates were written
+against the behaviour rather than the names, and quietly swapping them would move every rig built from
+those templates. The behaviour stands, the docstrings say what each one actually returns and why, and
+the rename is on the list to do when the templates are in front of us.
+
+**The first component whose version migration can actually run.** `IKFKComponent` is `VERSION = 2`, and
+`_update_version_1_to_version_2` renames the four build attributes that version 1 stored in snake_case.
+It is one of the five migrations in the pipeline that had never executed — `FRAGNode.update` built its
+method name from a version held on a `double` attribute, so it looked for
+`_update_version_1.0_to_version_2.0`, which no class has ever had. With `frag_base` rounding, the step
+is reachable, and the suite drives it end to end: build a component, put its attributes back under the
+old names, set the version to 1, call `update`, and check that each attribute is there under its new
+name and still wired to what it was wired to.

@@ -34,6 +34,9 @@ COMPONENT_MODULES = (
     'keyable_component',
     'multi_constraint',
     'animated_curves',
+    'ik_component',
+    'fk_component',
+    'ikfk_component',
 )
 
 

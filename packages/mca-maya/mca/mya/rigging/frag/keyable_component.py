@@ -6,6 +6,12 @@ A keyable component is a :class:`~rig_component.RigComponent` with controls: it 
 anything once a component has both controls and joints - baking the controls onto the skeleton,
 being driven by a skeleton, and working out what there is to bake.
 
+Two pieces of being driven by a skeleton are the same in every component that can be: finding the
+run of joints on the other skeleton that answers to this component's region and side, which is
+:meth:`KeyableComponent.matching_chain`, and driving a pole vector control, which has no joint of
+its own to follow, which is :func:`constrain_to_pole_vector`. Both were written out again in each
+component that needed them.
+
 What was wrong before:
 
 - **The two groups a component gets were named with different spellings of the same side.** The side
@@ -36,6 +42,8 @@ import pymel.core as pm
 # mca imports
 from mca.common import log
 from mca.mya.animation import baking
+from mca.mya.rigging import chain_markup
+from mca.mya.rigging import ik_utils
 from mca.mya.rigging.frag import frag_base
 from mca.mya.rigging.frag import rig_component
 from mca.mya.utils import constraint
@@ -131,6 +139,38 @@ class KeyableComponent(rig_component.RigComponent):
     # ----------------------------------------------------------------------------------- #
     # the skeleton
     # ----------------------------------------------------------------------------------- #
+    def matching_chain(self, attach_skeleton_root):
+        """
+        The run of joints on another skeleton that this component belongs over.
+
+        A component is driven by a skeleton other than its own - a mocap skeleton, a skeleton
+        carrying animation from another character - by looking up the same region and side on it.
+        Which region and side to look up is read off the first joint this component drives, because
+        the markup on the joints is what the lookup is against; the component's own ``side`` and
+        ``region`` are the fallback for a component whose joints carry no markup, and for one that
+        drives no joints at all.
+
+        Every component that can be driven by a skeleton started with its own copy of these twelve
+        lines. They are here once.
+
+        :param pm.nt.Joint attach_skeleton_root: The root of the skeleton to look in.
+        :return: The joints, root first, or an empty list when nothing on that skeleton matches.
+        :rtype: list(pm.nt.Joint)
+        """
+
+        bind_joint_list = self.bind_joints
+        region = None
+        side = None
+        if bind_joint_list:
+            markup = chain_markup.JointMarkup(bind_joint_list[0])
+            region = markup.region
+            side = markup.side
+
+        region = region or self.region
+        side = side or self.side
+
+        return chain_markup.ChainMarkup(attach_skeleton_root).get_full_chain(region, side)
+
     def attach_to_skeleton(self, *args, **kwargs):
         """
         Drive this component from a skeleton. A bare keyable component cannot; the ones that can
@@ -218,3 +258,38 @@ class KeyableComponent(rig_component.RigComponent):
                 bakeable_flags.append(flag_node)
 
         return bakeable_flags, attr_list, things_to_delete
+
+
+def constrain_to_pole_vector(joint_list, pv_flag, mo=True):
+    """
+    Drive a pole vector control from a skeleton.
+
+    A pole vector control has no joint of its own to follow. Where it belongs is read off the pose
+    of the three joints it steers, so a locator is put at that position, parented to the middle
+    joint so that it travels with the limb, and the control is constrained to it. The locator is
+    marked as a bake helper, which is what lets
+    :meth:`KeyableComponent.get_bakeable_rig_nodes` find it and clear it away once the bake is
+    done.
+
+    The three components that have a pole vector each had their own copy of this, and none of them
+    asked whether there was a pole vector to be had.
+
+    :param list(pm.nt.Joint) joint_list: The joints the pole vector steers, root first. Three or
+        more; a longer list is read the same way ``ik_utils.get_pole_vector_position`` reads it.
+    :param pv_flag: The pole vector control to drive.
+    :param bool mo: Keep the control where it is rather than snapping it to the locator.
+    :return: The constraint, or None when no pole vector position can be read from the chain - which
+        is what a chain of fewer than three joints answers, and what the version before called
+        ``setParent`` on.
+    :rtype: pm.nt.ParentConstraint or None
+    """
+
+    pv_locator = ik_utils.create_pole_vector_locator(joint_list)
+    if pv_locator is None:
+        logger.warning('No pole vector position can be read from %s, so %s is not driven by it.',
+                       joint_list, pv_flag)
+        return None
+
+    pv_locator.setParent(joint_list[1])
+    pv_locator.addAttr(BAKE_HELPER_ATTR, at=bool, dv=True)
+    return constraint.parent_constraint_safe(pv_locator, pv_flag, mo=mo)
