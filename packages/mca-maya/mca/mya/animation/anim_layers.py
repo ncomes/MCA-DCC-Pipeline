@@ -19,6 +19,9 @@ pieces that walking the chain needs.
 
 What was wrong before:
 
+- **The number both of these shift by was called ``start_time`` and is a distance**, which is what
+  ``anim_curves.restore_from_anim_curves`` calls ``time_offset``. Two functions taking the same
+  number should not disagree about what it means; both are ``time_offset`` now.
 - **A start frame of zero meant "no start frame".** ``restore_for_anim_layers`` and
   ``adjust_layers_timeline`` both tested ``if start_time:``, so a caller restoring an animation
   to frame 0 - the common case for a cinematic - got it restored wherever it happened to be.
@@ -641,7 +644,7 @@ def restore_for_anim_layers(anim_blend,
                             object_attribute,
                             keep_curves=False,
                             delete_old_curves=False,
-                            start_time=None):
+                            time_offset=None):
     """
     Put a stored blend chain back onto an object attribute.
 
@@ -649,7 +652,8 @@ def restore_for_anim_layers(anim_blend,
     :param pm.nt.Attribute object_attribute: The attribute to drive.
     :param bool keep_curves: Restore a duplicate, leaving the stored chain where it is.
     :param bool delete_old_curves: Delete whatever is already driving the attribute.
-    :param float start_time: Move the animation so it begins on this frame.
+    :param float time_offset: Distance to shift the animation by before connecting it. A
+        distance, not a frame - the meaning ``anim_curves.restore_from_anim_curves`` gives it.
     :return: The last frame of the restored animation, or None when it was not moved.
     :rtype: float
     """
@@ -664,8 +668,8 @@ def restore_for_anim_layers(anim_blend,
     else:
         swap_anim_layer_curves(anim_blend=anim_blend, object_attribute=object_attribute)
 
-    if start_time is not None:
-        end_time = adjust_layers_timeline(anim_blend=anim_blend, start_time=start_time)
+    if time_offset is not None:
+        end_time = adjust_layers_timeline(anim_blend=anim_blend, time_offset=time_offset)
 
     if object_attribute.isCompound():
         obj_curves = list(set(attr_utils.get_compound_attr_connections(node=object_attribute,
@@ -802,22 +806,23 @@ def swap_anim_layer_curves(anim_blend, object_attribute):
     return layers
 
 
-def adjust_layers_timeline(anim_blend, start_time):
+def adjust_layers_timeline(anim_blend, time_offset):
     """
     Shift every curve in a blend chain along the timeline.
 
     :param pm.nt.AnimBlendNodeBase anim_blend: The chain's top blend node.
-    :param float start_time: How far to shift by.
+    :param float time_offset: How far to shift by. A distance, not a frame, which is what it was
+        called ``start_time`` against.
     :return: The last frame across all of the chain's curves, or None when it has none.
     :rtype: float
     """
 
-    if start_time is None:
+    if time_offset is None:
         return None
 
     end_frame = None
     for curve in get_all_curves_in_layer_network(anim_blend):
-        anim_curves.change_curve_start_time(node_list=curve, shift_length=start_time)
+        anim_curves.change_curve_start_time(node_list=curve, shift_length=time_offset)
         key_times = pm.keyframe(curve, q=True) or []
         if not key_times:
             continue

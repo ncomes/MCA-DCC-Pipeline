@@ -13,7 +13,7 @@ the code expected.
 tests\run_tests.bat "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 ```
 
-**2,292 checks in 33 suites** so far — 2,308 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
+**2,343 checks in 34 suites** so far — 2,359 in an interactive Maya, where the windowing checks can run. `utils/`, `modifiers/`, `pyqt/` and `animation/` are done, bar one deferred half of `camera_utils`; `modeling/` bar the three modules that need `rigging/` and `face/` first; and `rigging/` is down to `rig_utils.py` itself, which nothing else in `rigging/` imports any more. `frag/` has started with the metadata node the whole system hangs on.
 
 `mayapy` is a full Maya with no window: it opens scenes, builds nodes and evaluates
 deformers. Run the suites with any other Python and they say they are skipping, and exit
@@ -77,6 +77,7 @@ any of this.
 | `rigging/frag/rig_component.py`, `rigging/frag/keyable_component.py` | ported, 57 checks — `align_component` has never aligned anything |
 | `rigging/frag/frag_root.py`, `skeletal_mesh.py`, `frag_rig.py`, `display_layers.py` | ported, 98 checks — reading a rig's scale rewired it; a rig build took other characters' geometry |
 | `rigging/frag/multi_constraint.py` | ported, 31 checks — a second space switch on a control raised something unreadable |
+| `rigging/frag/animated_curves.py` | ported, 51 checks — restoring animation could put curves on the wrong channels |
 | `utils/ma_maths.py` | **dropped** — see below |
 | `utils/locator_utils.py`, `utils/nurbs.py` | **dropped** — see below |
 | `tools/_deprecated/`, `cinematics/tools/_deprecated/` | **dropped** — see below |
@@ -1710,3 +1711,50 @@ with it — and split it into separate deletes. Maya disagreed: the one call is 
 nodes *one at a time* is what fails, because by the third delete the component's own node has gone
 with them. The suite pins that down, so the next reader who finds a four-node delete ugly finds out
 why it is one call before they change it.
+
+## `rigging/frag/animated_curves.py` — animation taken off a rig so it can be put back on another
+
+An animator's work is a set of curves hanging off a rig's controls. Lift those onto a node of their own
+and you have something that can travel: saved out as a clip file, carried on a skeleton while the rig
+around it is rebuilt, or handed to a different character. One compound attribute per object, holding
+the curves that were on it, named so they can be found again.
+
+- **Restoring animation could put curves on the wrong channels.** The curves and the attributes to put
+  them on were worked out as two separately sorted lists and then paired **by position**. They line up
+  only while both are the same length — and the curve list leaves out anything stored without a curve
+  while the attribute list does not, so one such gap shifted everything after it by one: an arm's
+  translateY landing on its translateZ, quietly. There is a mapping from node attribute to object
+  attribute right there in the same function, so the two are paired by *name* now, which cannot drift.
+  `get_stored_curve_pairs` had the same fault and the same fix; both go through one lookup.
+- **The stored start frame stayed at 0 for any animation starting at or after frame 0.** `startFrame`
+  begins at 0 and was only ever *lowered* — `if key_time[0] < startFrame.get()` — so an animation on
+  frames 10 to 20 was recorded as starting at 0. Everything that shifts a clip to a new start frame
+  works the distance out against that number, so every such clip landed however far the animation
+  began from zero out of place. The first curve stored sets the range now and the rest widen it,
+  tracked by a flag on the node so an older node picks it up on its next store.
+- **A whole-number start frame worked and a fractional one did nothing.** Three places tested
+  `isinstance(start_time, int)` before shifting, which is False for `1001.0` — while all three
+  docstrings said `float`. Shifting a clip to a frame typed into a tool, which hands over a float,
+  silently did not move it.
+- **The shift compounded across an object's attributes.** `start_time` was turned into an offset
+  *inside* the loop over the attributes and assigned back over itself, so the second attribute's
+  offset was worked out from the first attribute's offset. It is worked out once, before anything
+  moves.
+- **Storing animation onto a skeleton in a namespace renamed the node to nonsense.** The node was
+  moved with `str(node).replace(old_namespace, new_namespace)` — and when the node is in the root
+  namespace the old namespace is the empty string, which `str.replace` inserts the new one **between
+  every character** of. `AnimatedCurvesComponent` became `hero:Ahero:nhero:ihero:m…`.
+- **`restore_from_anim_curves`' shift argument is `time_offset`, not `start_time`** — the one rewiring
+  note this module owed from the animation port. It was passed by keyword, so the call raised
+  `TypeError` the moment a shift was asked for. While paying that off: `anim_layers`'
+  `restore_for_anim_layers` and `adjust_layers_timeline` took the same *distance* under the name
+  `start_time`, which is what `anim_curves` calls `time_offset`. Two functions taking the same number
+  should not disagree about what it means; both are `time_offset` now.
+- **Restoring the first attribute of an object disconnected every animation layer the node held**, so
+  every attribute after it had none to find. That belongs after the object is done, not inside the
+  loop over its attributes.
+- `_correct_attribute_names` looked for the object's name *anywhere* in a child's name rather than at
+  the front, then replaced it everywhere rather than once, and dropped a child it did not find the name
+  in without a word. `_get_compound_attributes` answered None where its docstring promised a list. The
+  warning for a node not on a skeleton said the skeleton had no node on it, which is the opposite way
+  round. `flag_count` and `obj_count` held objects, not counts.

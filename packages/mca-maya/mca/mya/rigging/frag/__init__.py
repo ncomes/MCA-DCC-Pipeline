@@ -33,6 +33,7 @@ COMPONENT_MODULES = (
     'rig_component',
     'keyable_component',
     'multi_constraint',
+    'animated_curves',
 )
 
 
