@@ -26,7 +26,14 @@ def body(suite):
     from mca.mya.utils import playblast
 
     harness.new_scene()
-    suite.check('a batch Maya says it cannot capture', playblast.can_capture() is False)
+    # These answers are the ones a batch Maya gives. run_in_maya.run_all() runs this same
+    # suite in a Maya that has a window, where capturing really can happen, so asserting
+    # the batch answers there fails on the environment rather than on the code.
+    batch = cmds.about(batch=True)
+    if batch:
+        suite.check('a batch Maya says it cannot capture', playblast.can_capture() is False)
+    else:
+        suite.note('capture checks', 'skipped - this Maya has a window')
 
     # -- the resolution ------------------------------------------------------------------ #
     suite.check('no resolution given falls back to the default',
@@ -106,18 +113,20 @@ def body(suite):
     folder = os.path.join(suite.temp, 'captures')
     os.makedirs(folder)
 
-    suite.check('no window is made in a batch Maya',
-                playblast.create_render_window() == (None, None))
-    suite.check('a video capture answers empty rather than raising',
-                playblast.playblast_video(os.path.join(folder, 'a.avi')) == '')
-    suite.check('a still capture answers an empty list',
-                playblast.playblast_images(folder) == [])
-    suite.check('a single-frame capture answers empty',
-                playblast.playblast_single_frame(os.path.join(folder, 'a.jpg')) == '')
-    suite.check('a compressed capture answers empty',
-                playblast.capture_and_compress_video(os.path.join(folder, 'a.mp4')) == '')
-    suite.check('a thumbnail answers empty',
-                playblast.create_center_capture([], os.path.join(folder, 'thumb'), 'thumb') == '')
+    if batch:
+        suite.check('no window is made in a batch Maya',
+                    playblast.create_render_window() == (None, None))
+        suite.check('a video capture answers empty rather than raising',
+                    playblast.playblast_video(os.path.join(folder, 'a.avi')) == '')
+        suite.check('a still capture answers an empty list',
+                    playblast.playblast_images(folder) == [])
+        suite.check('a single-frame capture answers empty',
+                    playblast.playblast_single_frame(os.path.join(folder, 'a.jpg')) == '')
+        suite.check('a compressed capture answers empty',
+                    playblast.capture_and_compress_video(os.path.join(folder, 'a.mp4')) == '')
+        suite.check('a thumbnail answers empty',
+                    playblast.create_center_capture([], os.path.join(folder, 'thumb'),
+                                                    'thumb') == '')
     suite.check('a compressed capture to a path that is not an mp4 is refused first of all',
                 playblast.capture_and_compress_video(os.path.join(folder, 'a.mov')) == '')
 

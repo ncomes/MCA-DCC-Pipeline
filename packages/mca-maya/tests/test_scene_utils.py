@@ -110,8 +110,15 @@ def check_deleters(suite, pm):
                 display_layers.delete_empty_display_layers is not None)
 
     # -- the shader pass, which needs a window ------------------------------------------ #
-    suite.check('the unused-shader pass says no rather than raising in a batch Maya',
-                scene_utils.delete_unused_shader_nodes() is False)
+    #
+    # It answers False in a batch Maya because the MEL it drives needs a window. Where
+    # there is one - run_in_maya.run_all() - it does the work and answers True, so this is
+    # a check about the environment and has to ask which one it is in.
+    if cmds.about(batch=True):
+        suite.check('the unused-shader pass says no rather than raising in a batch Maya',
+                    scene_utils.delete_unused_shader_nodes() is False)
+    else:
+        suite.note('unused-shader pass', 'skipped - this Maya has a window')
 
     # -- clean_scene -------------------------------------------------------------------- #
     harness.new_scene()
