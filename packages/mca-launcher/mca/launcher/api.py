@@ -85,7 +85,7 @@ def set_current_project(name):
 
 @safe
 def save_project(name, project_root, framework_path, art_path='', art_paths=None,
-                 common_tools='', make_current=True):
+                 common_tools='', make_current=True, prepare=True, progress=None):
     """
     Create or update a project.
 
@@ -96,6 +96,10 @@ def save_project(name, project_root, framework_path, art_path='', art_paths=None
     :param dict art_paths: Any of the MCA_*_PATH values, by environment name.
     :param str common_tools: A shared tools folder, if there is one.
     :param bool make_current: Open the launcher with this project from now on.
+    :param bool prepare: Install the dependencies the project's DCCs need, now that the
+        framework path is known. See :func:`prepare_project`. Off for a caller that only
+        wants the preferences written, such as a test or a bulk edit.
+    :param callable progress: Called with each line of dependency progress. May be None.
     :return: Response whose result is the saved values.
     :rtype: dict
     """
@@ -113,10 +117,105 @@ def save_project(name, project_root, framework_path, art_path='', art_paths=None
         globals_.project_name = project.project_name
         globals_.save()
 
-    return ({'name': project.project_name, 'values': project.values},
-            'Saved {} to {}. Framework: {}.'
-            .format(project.project_name, prefs.project_prefs_file(project.project_name),
-                    project.framework_path))
+    message = ('Saved {} to {}. Framework: {}.'
+               .format(project.project_name, prefs.project_prefs_file(project.project_name),
+                       project.framework_path))
+
+    # Fill the dependency folders now rather than at the first launch. A project is
+    # only as usable as the packages its DCCs can import, and the framework path -
+    # which decides what gets installed - is not known until this moment.
+    result = {'name': project.project_name, 'values': project.values}
+    if prepare:
+        prepared = prepare_project(project.project_name, progress=progress)
+        result['dependencies'] = prepared.get('result')
+        if not prepared.get('ok', True):
+            message += ' ' + str(prepared.get('message', ''))
+        elif prepared.get('message'):
+            message += ' ' + prepared['message']
+
+    return result, message
+
+
+@safe
+def prepare_project(name=None, progress=None, force=False):
+    """
+    Install the dependencies a project's DCCs need, as soon as the project exists.
+
+    Creating a project is the moment a machine learns which framework it will run and
+    which DCCs it will run it in, so it is the moment to fill the dependency folders -
+    rather than leaving the first launch to discover that a few hundred megabytes have
+    to be downloaded before Maya can open. It is also what makes a fresh clone work:
+    somebody who has just pulled the repository and made a project gets PyMEL and the
+    rest installed and proved before they ever press Launch.
+
+    Every DCC the project has a version chosen for is prepared. One that is not
+    installed on this machine is reported and skipped rather than failing the others -
+    a project can name a Maya this artist does not have.
+
+    Safe to call again: ``dependencies.ensure`` is a stamp read when there is nothing
+    to do.
+
+    :param str name: The project. None uses the current one.
+    :param callable progress: Called with each line of progress. May be None.
+    :param bool force: Reinstall even when the stamp says the folder is fine.
+    :return: Response whose result is a per-DCC summary.
+    :rtype: dict
+    """
+
+    project = _resolve_project(name)
+    project_prefs = prefs.ProjectPrefs.load(project)
+    selections = prefs.Selections.load(project)
+    chosen = selections.dccs
+
+    if not chosen:
+        return ({'project': project, 'prepared': [], 'skipped': [], 'failed': []},
+                'No DCC has been chosen for {} yet, so there is nothing to install. '
+                'Pick a version and the dependencies follow.'.format(project))
+
+    prepared, skipped, failed = [], [], []
+    for dcc_name, key in sorted(chosen.items()):
+        if not key:
+            continue
+        dcc_object = dccs.get(dcc_name)
+        if dcc_object is None:
+            skipped.append({'dcc': dcc_name, 'key': key, 'why': 'not a DCC this launcher knows'})
+            continue
+
+        interpreter = dcc_object.interpreter(key)
+        if not interpreter:
+            skipped.append({'dcc': dcc_name, 'key': key,
+                            'why': '{} {} is not installed on this machine'
+                                   .format(dcc_object.label, key)})
+            continue
+
+        if progress:
+            progress('{} {}: checking dependencies...'.format(dcc_object.label, key))
+
+        outcome = dependencies.ensure(dcc_object.name, dcc_object.deps_key(key),
+                                      project_prefs.framework_path, interpreter,
+                                      progress=progress, force=force)
+        entry = {'dcc': dcc_name, 'key': key, 'message': outcome.get('message', '')}
+        (prepared if outcome.get('ok') else failed).append(entry)
+
+    parts = []
+    if prepared:
+        parts.append('{} ready'.format(', '.join('{} {}'.format(e['dcc'], e['key'])
+                                                 for e in prepared)))
+    if skipped:
+        parts.append('skipped {}'.format(', '.join('{} ({})'.format(e['key'], e['why'])
+                                                   for e in skipped)))
+    if failed:
+        parts.append('FAILED {}'.format(', '.join('{} {}'.format(e['dcc'], e['key'])
+                                                  for e in failed)))
+
+    result = {'project': project, 'prepared': prepared,
+              'skipped': skipped, 'failed': failed}
+    message = '{}: {}.'.format(project, '; '.join(parts) or 'nothing to do')
+
+    if failed:
+        from mca.launcher.core.contract import failed as failed_response
+        return failed_response(message, result)
+    return result, message
 
 
 @safe

@@ -168,6 +168,15 @@ def build(project_prefs, dcc_name, key, base=None):
         # way" as an escape from anything this does during start-up.
         environment['MCA_MAYA_COMMAND_PORTS'] = '1'
 
+    # Keep Python's per-user site-packages out of the DCC.
+    #
+    # `pip install --user something` lands in AppData/Roaming/Python/PythonXY, which
+    # Python adds to sys.path automatically and ahead of the DCC's own packages. A
+    # user-site PyMEL shadowing the managed one is exactly how a Maya that was fine
+    # yesterday stops importing the framework today, with nothing saying why. The
+    # dependency folder this launcher fills is the one that should win.
+    environment['PYTHONNOUSERSITE'] = '1'
+
     if dcc_name == 'unreal' and str(key).lower().endswith('.uproject'):
         environment['UE_PROJECT_PATH'] = os.path.normpath(key)
 
@@ -185,7 +194,7 @@ def describe(environment):
 
     return {key: value for key, value in sorted(environment.items())
             if key.startswith('MCA_') or key in ('PYTHONPATH', 'UE_PYTHONPATH',
-                                                 'UE_PROJECT_PATH')}
+                                                 'UE_PROJECT_PATH', 'PYTHONNOUSERSITE')}
 
 
 def _depend_name(dcc_name):

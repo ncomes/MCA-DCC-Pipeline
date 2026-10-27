@@ -38,6 +38,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -97,6 +98,30 @@ ABI3_FALLBACKS = {
 #: What a Windows extension module says when the DLL it links against is not there.
 ABI3_SYMPTOM = 'dll load failed'
 
+#: What PyMEL says when it has no cache for this Maya and cannot build one.
+#:
+#: PyMEL keeps prebuilt caches per Maya version. For a version it does not ship them
+#: for, it rebuilds from Maya's own documentation - which Maya 2026 does not install,
+#: so the import dies on a missing folder rather than on anything to do with the
+#: package. Two caches fail two different ways, so both symptoms are here: the API
+#: cache raises from the documentation parser, and the command cache raises from the
+#: internal-command list it reads out of that same documentation folder.
+PYMEL_NO_CACHE_SYMPTOMS = (
+    'cannot find maya documentation',
+    'could not find list of internal commands',
+)
+
+#: The per-version caches PyMEL cannot start without, as format strings taking the
+#: Maya version.
+#:
+#: A missing ``mayaApi`` raises IOError from ``pymel/internal/parsers.py`` while
+#: ``ApiCache.rebuild`` builds an ``ApiDocParser``. A missing ``mayaCmdsList`` raises
+#: RuntimeError from ``cmdcache.getInternalCmds``, which reads
+#: ``internalCommandList.txt`` out of Maya's documentation. The other two caches
+#: PyMEL ships - ``mayaCmdsDocs`` and ``mayaCmdsExamples`` - carry only docstrings
+#: and examples and are read with errors ignored, so they are not needed here.
+PYMEL_REQUIRED_CACHES = ('mayaApi{}.py', 'mayaCmdsList{}.py')
+
 #: The framework does not start without these. Everything else that fails to install for a
 #: given interpreter is reported and skipped - which is how Maya 2022's Python 3.7 can keep
 #: working after the AI packages, which need 3.8 or newer, refuse to install there.
@@ -109,6 +134,15 @@ INSTALL_TIMEOUT = 900
 
 #: How long the import check may take. It starts an interpreter, so it is seconds.
 VERIFY_TIMEOUT = 180
+
+#: Packages whose own import proves nothing, and the submodule that does prove them.
+#:
+#: ``import pymel`` touches none of PyMEL's caches - ``pymel/__init__.py`` barely does
+#: anything - so it succeeds on an installation that cannot actually be used. The
+#: caches are built by ``pymel.core``, which is what every tool here imports, so that
+#: is what gets proved. The deeper import costs a few seconds of mayapy start-up;
+#: finding out at project setup rather than when the DCC refuses to start is worth it.
+VERIFY_SUBMODULES = {'pymel': 'pymel.core'}
 
 
 # ---------------------------------------------------------------------------- #
@@ -428,8 +462,72 @@ def _clear_target(target):
                          .format(resolved, root))
 
     if os.path.isdir(resolved):
-        shutil.rmtree(resolved)
+        held = locked_extension_modules(resolved)
+        if held:
+            raise ValueError(
+                'Refusing to empty {}: {} of its extension modules are loaded by a '
+                'running program, and Windows will not delete a DLL that is mapped into '
+                'a process. Nothing has been removed.\n  {}\nClose the DCC that is using '
+                'these packages and install from the launcher, which is the order '
+                'api.launch already follows: install first, then start the DCC.'
+                .format(resolved, len(held),
+                        '\n  '.join(os.path.relpath(one, resolved) for one in held[:8])))
+        shutil.rmtree(resolved, onerror=_make_writable)
     os.makedirs(resolved)
+
+
+def _make_writable(function, path, excinfo):
+    """
+    rmtree handler for the one failure that is ours to fix: a read-only file.
+
+    A lock is not retried here - locked_extension_modules has already refused that
+    case before a single file was removed.
+
+    :param callable function: The call that failed.
+    :param str path: What it was working on.
+    :param tuple excinfo: The exception.
+    """
+
+    if not os.access(path, os.W_OK):
+        os.chmod(path, stat.S_IWRITE)
+        function(path)
+        return
+    raise excinfo[1]
+
+
+def locked_extension_modules(target):
+    """
+    The extension modules under a folder that a running process has loaded.
+
+    This is the check whose absence made a failed refill destructive. ``_clear_target``
+    deletes in directory order, so a single locked file part way through left the folder
+    half emptied and its stamp gone - two dozen packages removed, the rest kept, and
+    ``status`` afterwards reporting only that the stamp was missing.
+
+    A ``.pyd`` is a DLL. Windows maps it into the process that imported it and opens it
+    denying write sharing, so opening it for write fails while it is loaded and succeeds
+    the moment it is not. The file is opened and closed, never written.
+
+    Only extension modules are tested: a plain ``.py`` is never locked, and proving that
+    about twelve thousand of them would cost more than the install it is protecting.
+
+    :param str target: The folder about to be emptied.
+    :return: Absolute paths that cannot be removed right now, in walk order.
+    :rtype: list(str)
+    """
+
+    held = []
+    for folder, _, names in os.walk(target):
+        for name in names:
+            if not name.lower().endswith(('.pyd', '.dll', '.so')):
+                continue
+            path = os.path.join(folder, name)
+            try:
+                with open(path, 'r+b'):
+                    pass
+            except (OSError, IOError):
+                held.append(path)
+    return held
 
 
 def verify(interpreter, target, imports):
@@ -440,52 +538,95 @@ def verify(interpreter, target, imports):
     somebody started an install; importing numpy proves it finished, matches this
     interpreter's ABI, and is not a half-written tree.
 
+    Two things this gets right that a plain import does not:
+
+    - It imports the submodule that actually does the work where
+      :data:`VERIFY_SUBMODULES` names one, because some packages do nothing on import.
+    - It runs with the per-user site-packages switched off, which is what the launcher
+      gives the DCC, so the folder this launcher filled is the one being proved rather
+      than whatever the user happens to have installed for themselves. It reports what
+      it found in the user site separately, since that copy wins in any DCC started
+      without the launcher.
+
     :param str interpreter: The DCC's Python executable.
     :param str target: The dependency folder to put on the path.
     :param list(str) imports: Module names to import.
-    :return: ``{'ok': bool, 'imported': [...], 'missing': {name: reason}}``
+    :return: ``{'ok': bool, 'imported': [...], 'missing': {name: reason},
+        'origins': {name: file}, 'shadowed': [...], 'user_site': str}``
     :rtype: dict
     """
 
     wanted = sorted(set(imports))
     if not wanted:
-        return {'ok': True, 'imported': [], 'missing': {}}
+        return {'ok': True, 'imported': [], 'missing': {}, 'origins': {},
+                'shadowed': [], 'user_site': ''}
 
-    # Printed one line per module, parsed back here. Running them in one interpreter keeps
-    # this to a single start-up, which matters: mayapy takes a second or two to boot.
+    # One line per module, tab separated so a Windows path or an error message cannot be
+    # mistaken for another field. Running them in one interpreter keeps this to a single
+    # start-up, which matters: mayapy takes a second or two to boot.
     code = (
-        'import importlib, sys\n'
-        'for name in {names!r}:\n'
+        'import importlib, os, site\n'
+        'names = {names!r}\n'
+        'deep = {deep!r}\n'
+        'for name in names:\n'
         '    try:\n'
-        '        importlib.import_module(name)\n'
+        '        module = importlib.import_module(deep.get(name, name))\n'
         '    except Exception as error:\n'
-        '        print("MISSING", name, type(error).__name__, error)\n'
+        '        print("MISSING", name, type(error).__name__ + ": " + str(error), sep="\\t")\n'
         '    else:\n'
-        '        print("OK", name)\n'
-    ).format(names=wanted)
+        '        print("OK", name, getattr(module, "__file__", "") or "-", sep="\\t")\n'
+        'try:\n'
+        '    user = site.getusersitepackages()\n'
+        'except Exception:\n'
+        '    user = ""\n'
+        'shadowed = []\n'
+        'if user and os.path.isdir(user):\n'
+        '    listed = []\n'
+        '    for entry in os.listdir(user):\n'
+        '        listed.append(entry.lower())\n'
+        '    for name in names:\n'
+        '        if name.lower() in listed:\n'
+        '            shadowed.append(name)\n'
+        'print("USERSITE", user or "-", " ".join(shadowed) or "-", sep="\\t")\n'
+    ).format(names=wanted, deep=VERIFY_SUBMODULES)
 
     environment = os.environ.copy()
     environment['PYTHONPATH'] = target
     # The DCC's own site-packages still win, which is deliberate: if Maya ships numpy, that
-    # is the numpy the framework will use, and this check should agree with reality.
+    # is the numpy the framework will use, and this check should agree with reality. The
+    # user's own site-packages are a different matter - they are nobody's deliberate
+    # choice for this DCC, and the launcher switches them off at launch, so the check runs
+    # the same way rather than proving a package the DCC will not actually load.
+    environment['PYTHONNOUSERSITE'] = '1'
     process = subprocess.run([interpreter, '-c', code], capture_output=True, text=True,
                              timeout=VERIFY_TIMEOUT, env=environment, errors='replace')
 
     imported = []
     missing = {}
+    origins = {}
+    shadowed = []
+    user_site = ''
     for line in (process.stdout or '').splitlines():
-        parts = line.split(None, 2)
-        if len(parts) >= 2 and parts[0] == 'OK':
+        parts = line.split('\t')
+        if len(parts) < 2:
+            continue
+        if parts[0] == 'OK':
             imported.append(parts[1])
-        elif len(parts) >= 2 and parts[0] == 'MISSING':
+            origins[parts[1]] = parts[2] if len(parts) > 2 else ''
+        elif parts[0] == 'MISSING':
             missing[parts[1]] = parts[2] if len(parts) > 2 else 'could not be imported'
+        elif parts[0] == 'USERSITE':
+            user_site = '' if parts[1] == '-' else parts[1]
+            found = parts[2] if len(parts) > 2 else '-'
+            shadowed = [] if found == '-' else found.split()
 
     if not imported and not missing:
         missing['(the check itself)'] = (
             'The import check produced no output. Exit code {}. {}'
             .format(process.returncode, (process.stderr or '').strip()[-400:]))
 
-    return {'ok': not missing, 'imported': imported, 'missing': missing}
+    return {'ok': not missing, 'imported': imported, 'missing': missing,
+            'origins': origins, 'shadowed': shadowed, 'user_site': user_site}
 
 
 def remove_distribution(target, name):
@@ -564,6 +705,144 @@ def recover_stable_abi(interpreter, target, wanted, missing, say):
             say('  {} still does not import: {}'
                 .format(name, proof['missing'].get(name, 'no reason given')))
     return recovered
+
+
+def framework_pymel_caches(framework_path, version):
+    """
+    The PyMEL caches committed to the framework for this Maya version.
+
+    Built once on a machine with Maya's documentation installed and committed under
+    ``mca-common/mca/common/startup/dependencies/pymel_cache``, so nobody else needs
+    the documentation at all.
+
+    :param str framework_path: The packages folder.
+    :param version: The Maya version.
+    :return: ``{filename: path}`` for every required cache the framework ships for
+        this version. A missing one is simply left out, so a partial set still
+        contributes what it has.
+    :rtype: dict
+    """
+
+    if not framework_path:
+        return {}
+
+    folder = os.path.join(framework_path, 'mca-common', 'mca', 'common', 'startup',
+                          'dependencies', 'pymel_cache')
+    found = {}
+    for pattern in PYMEL_REQUIRED_CACHES:
+        name = pattern.format(version)
+        candidate = os.path.join(folder, name)
+        if os.path.isfile(candidate):
+            found[name] = candidate
+    return found
+
+
+def pymel_cache_names(target, pattern):
+    """
+    The caches of one kind that PyMEL ships, newest Maya version first.
+
+    :param str target: The dependency folder PyMEL was installed into.
+    :param str pattern: One entry of :data:`PYMEL_REQUIRED_CACHES`, for example
+        ``'mayaApi{}.py'``.
+    :return: ``[(maya_year, filename), ...]`` sorted newest first.
+    :rtype: list(tuple)
+    """
+
+    folder = os.path.join(target, 'pymel', 'cache')
+    if not os.path.isdir(folder):
+        return []
+
+    prefix = pattern.split('{}')[0]
+    expression = r'^{}(\d{{4}})\.py$'.format(re.escape(prefix))
+    found = []
+    for name in os.listdir(folder):
+        match = re.match(expression, name)
+        if match:
+            found.append((int(match.group(1)), name))
+    return sorted(found, reverse=True)
+
+
+def recover_pymel_cache(target, version, missing, say, repo_caches=None):
+    """
+    Give PyMEL the caches for a Maya version it does not ship them for.
+
+    Maya stopped shipping PyMEL after 2025 and PyMEL's last release predates Maya
+    2026, so on 2026 there are no caches and no documentation to build them from.
+    The import check catches that; this answers it.
+
+    Two caches are needed - see :data:`PYMEL_REQUIRED_CACHES` - and each is looked
+    for in two places, in order:
+
+    1. A cache committed to the repository for this exact Maya version. Generated
+       once, on a machine that does have the documentation installed, it is the
+       correct cache and is preferred wherever it exists.
+    2. The newest cache of that kind PyMEL itself ships, copied forward under this
+       version's name. Maya's API and command set move slowly between releases, so
+       the previous year's cache loads and works - but PyMEL will not know about
+       node types, enums, commands or flags added since, so this is a fallback that
+       is reported rather than done silently.
+
+    Only called with what the import check actually rejected, and only for the
+    documented symptoms: this is a fix for measured failures, not a retry loop.
+
+    :param str target: The dependency folder PyMEL was installed into.
+    :param str version: The Maya version, for example '2026'.
+    :param dict missing: ``{import name: reason}`` from :func:`verify`.
+    :param callable say: Where to report.
+    :param dict repo_caches: ``{filename: path}`` of caches shipped with the
+        framework, from :func:`framework_pymel_caches`.
+    :return: What was provided, as ``{'pymel': [source, ...]}``, or {}.
+    :rtype: dict
+    """
+
+    reason = str(missing.get('pymel', '')).lower()
+    if not reason:
+        return {}
+    if not any(symptom in reason for symptom in PYMEL_NO_CACHE_SYMPTOMS):
+        return {}
+
+    repo_caches = repo_caches or {}
+    folder = os.path.join(target, 'pymel', 'cache')
+    absent = []
+    provided = []
+    for pattern in PYMEL_REQUIRED_CACHES:
+        name = pattern.format(version)
+        wanted = os.path.join(folder, name)
+        if os.path.isfile(wanted):
+            continue
+        absent.append(name)
+
+        committed = repo_caches.get(name)
+        if committed and os.path.isfile(committed):
+            shutil.copyfile(committed, wanted)
+            say('  {}: used the copy committed to the framework.'.format(name))
+            provided.append(committed)
+            continue
+
+        available = pymel_cache_names(target, pattern)
+        if not available:
+            say('  {}: PyMEL has no cache for Maya {} and ships none to copy, so it '
+                'cannot be used in this Maya. Install the Maya {} documentation and '
+                'PyMEL will build its own.'.format(name, version, version))
+            continue
+
+        year, newest = available[0]
+        source = os.path.join(folder, newest)
+        shutil.copyfile(source, wanted)
+        say('  {0}: PyMEL ships none for Maya {1} - Maya stopped shipping PyMEL and '
+            'PyMEL\'s last release predates {1} - and Maya {1} installs no '
+            'documentation to build one from. Its Maya {2} cache was copied forward: '
+            'it loads, but PyMEL will not know about anything added since {2}. '
+            'Install the Maya {1} documentation once and commit the cache it builds '
+            'to replace this.'.format(name, version, year))
+        provided.append(source)
+
+    if not provided:
+        return {}
+
+    say('PyMEL was missing {} of its {} required caches for Maya {}; provided {}.'
+        .format(len(absent), len(PYMEL_REQUIRED_CACHES), version, len(provided)))
+    return {'pymel': provided}
 
 
 def install(dcc, version, framework_path, interpreter, progress=None):
@@ -652,6 +931,34 @@ def install(dcc, version, framework_path, interpreter, progress=None):
         checked['missing'].pop(name, None)
         if name not in checked['imported']:
             checked['imported'].append(name)
+
+    # PyMEL fails for a reason of its own - no API cache for this Maya - so it gets
+    # its own recovery rather than a wheel downgrade, and is proved the same way.
+    seeded = recover_pymel_cache(
+        target, str(version), checked['missing'], say,
+        repo_caches=framework_pymel_caches(framework_path, version))
+    if seeded:
+        proof = verify(interpreter, target, ['pymel'])
+        if proof['ok']:
+            checked['missing'].pop('pymel', None)
+            if 'pymel' not in checked['imported']:
+                checked['imported'].append('pymel')
+            say('  pymel imports now.')
+        else:
+            say('  pymel still does not import: {}'
+                .format(proof['missing'].get('pymel', 'no reason given')))
+
+    # A package that also exists in the user's own site-packages shadows the managed copy
+    # in any DCC started without PYTHONNOUSERSITE, which is how a Maya that worked
+    # yesterday stops importing the framework today with nothing saying why. The launcher
+    # sets that variable, so this is a warning and not a failure - but it names the thing
+    # to delete, which is the only permanent fix.
+    for name in checked.get('shadowed', []):
+        say('  {} is also installed in your own site-packages ({}). This launcher sets '
+            'PYTHONNOUSERSITE so the managed copy wins, but a DCC started any other way '
+            'will import that one instead. Deleting it is the permanent fix.'
+            .format(name, checked.get('user_site') or 'location unknown'))
+
     checked['imported'].sort()
     checked['ok'] = not checked['missing']
 
