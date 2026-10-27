@@ -75,6 +75,57 @@ def add_to_path(*paths):
         if path not in sys.path:
             sys.path.append(path)
             added.append(path)
+    repair_namespace(*added)
+    return added
+
+
+def repair_namespace(*roots):
+    """
+    Teach an already-imported ``mca`` package about package roots added after it.
+
+    ``mca`` is a pkgutil namespace: each ``mca/__init__.py`` calls ``extend_path``, which
+    scans ``sys.path`` **at the moment that file runs** and then never looks again. Python
+    caches the result in ``sys.modules``, so whoever imports ``mca`` first decides, for the
+    life of the session, which package roots it can see.
+
+    That is fine when this framework starts first. It is not fine when something else -
+    another project's environment, a DCC plug-in that loads early - imports ``mca`` from a
+    different depot before this runs. ``mca`` is then bound to that other tree, our roots
+    are appended to ``sys.path`` far too late to matter, and importing ``mca.common`` fails
+    with "No module named 'mca.common'" while the folder sits plainly on disk.
+
+    Appending to the live ``mca.__path__`` is what makes the two meet. The import caches
+    are invalidated afterwards because a failed import of ``mca.common`` is remembered.
+
+    :param roots: Folders just put on ``sys.path``, each of which may hold an ``mca``.
+    :return: The namespace folders added.
+    :rtype: list(str)
+    """
+
+    module = sys.modules.get('mca')
+    if module is None:
+        # Nothing has imported it yet, so extend_path will see our roots by itself.
+        return []
+
+    namespace = getattr(module, '__path__', None)
+    if namespace is None:
+        return []
+
+    existing = [os.path.normcase(os.path.abspath(one)) for one in namespace]
+    added = []
+    for root in roots:
+        candidate = os.path.join(root, 'mca')
+        if not os.path.isdir(candidate):
+            continue
+        if os.path.normcase(os.path.abspath(candidate)) in existing:
+            continue
+        namespace.append(candidate)
+        existing.append(os.path.normcase(os.path.abspath(candidate)))
+        added.append(candidate)
+
+    if added:
+        import importlib
+        importlib.invalidate_caches()
     return added
 
 

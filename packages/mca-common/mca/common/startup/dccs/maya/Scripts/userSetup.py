@@ -25,20 +25,110 @@ import maya.api.OpenMaya as OpenMaya
 import maya.cmds as cmds
 
 
+#: Where this script sits relative to the packages folder, used only when the
+#: environment does not say. Six levels: Scripts/<dcc>/dccs/startup/common/mca.
+_LEVELS_UP = 6
+
+
 def framework_path():
     """
-    :return: The folder holding the ``mca`` package, worked out from this file: this script
-        is at ``<packages>/mca-common/mca/common/startup/dccs/maya/Scripts``.
+    The folder to put on sys.path so ``import mca.common`` works.
+
+    Asked for in two ways, in this order:
+
+    1. ``MCA_FRAMEWORK_PATH``, which the launcher exports when it starts a DCC.
+       This is the answer whenever a DCC was started the supported way, and it is
+       the project's own value rather than one worked out from where a file sits.
+    2. This script's own location, for a Maya opened by hand.
+
+    Deriving it from ``__file__`` alone is what this replaces. Maya does not always
+    execute userSetup.py with ``__file__`` defined - Maya 2026 does not - and the
+    NameError came out of a function documented to return a path, before anything
+    had loaded and with nothing saying why. ``__file__`` is now a fallback, and a
+    missing one is reported rather than raised.
+
+    :return: The folder holding the ``mca`` package (``<packages>/mca-common``),
+        or '' when neither route answers.
     :rtype: str
     """
 
-    # This script is at <packages>/mca-common/mca/common/startup/dccs/<dcc>/Scripts, so six
-    # folders up is mca-common itself - the folder holding the mca package. Joining
-    # 'mca-common' on again is one too many, which is what the suite caught.
-    here = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(6):
-        here = os.path.dirname(here)
-    return os.path.normpath(here)
+    # MCA_FRAMEWORK_PATH names the packages folder; what goes on sys.path is the
+    # package inside it that holds `mca`, which is mca-common. One level lower.
+    from_env = os.getenv('MCA_FRAMEWORK_PATH')
+    if from_env:
+        candidate = os.path.normpath(os.path.join(from_env, 'mca-common'))
+        if os.path.isdir(os.path.join(candidate, 'mca')):
+            return candidate
+
+    here = globals().get('__file__')
+    if not here:
+        # Maya exec'd this without __file__; the Scripts folder is on sys.path
+        # though, because that is how Maya found this script at all.
+        for entry in sys.path:
+            if entry.replace('\\', '/').rstrip('/').endswith('dccs/maya/Scripts'):
+                here = os.path.join(entry, 'userSetup.py')
+                break
+
+    if not here:
+        return ''
+
+    folder = os.path.dirname(os.path.abspath(here))
+    for _ in range(_LEVELS_UP):
+        folder = os.path.dirname(folder)
+    return os.path.normpath(folder)
+
+
+def claim_namespace(root):
+    """
+    Make an already-imported ``mca`` package see this framework's root.
+
+    ``mca`` is a pkgutil namespace package: every ``mca/__init__.py`` calls
+    ``extend_path``, which reads ``sys.path`` at the moment that file runs and never
+    again. Python then caches ``mca`` in ``sys.modules``. So whichever code imports
+    ``mca`` first decides, for the rest of the session, which roots it can see - and
+    a Maya plug-in that loads before userSetup can easily get there first.
+
+    When that happens, appending this framework to ``sys.path`` is too late: ``mca``
+    is already bound elsewhere and ``import mca.common`` fails with "No module named
+    'mca.common'" while the folder sits plainly on disk. Appending to the live
+    ``mca.__path__`` is what lets the two meet.
+
+    :param str root: ``<packages>/mca-common``, the folder holding ``mca``.
+    :return: Whether anything was added.
+    :rtype: bool
+    """
+
+    module = sys.modules.get('mca')
+    namespace = getattr(module, '__path__', None) if module is not None else None
+    if namespace is None:
+        # Not imported yet - extend_path will find us on its own.
+        return False
+
+    wanted = os.path.join(root, 'mca')
+    if not os.path.isdir(wanted):
+        return False
+    if any(os.path.normcase(os.path.abspath(one)) == os.path.normcase(os.path.abspath(wanted))
+           for one in namespace):
+        return False
+
+    namespace.append(wanted)
+    import importlib
+    importlib.invalidate_caches()
+    return True
+
+
+def namespace_report():
+    """
+    :return: Where an already-imported ``mca`` came from, for a failure message.
+    :rtype: str
+    """
+
+    module = sys.modules.get('mca')
+    if module is None:
+        return 'mca had not been imported'
+    where = getattr(module, '__file__', None) or '<namespace>'
+    paths = list(getattr(module, '__path__', []) or [])
+    return 'mca was already imported from {} with __path__={}'.format(where, paths)
 
 
 def say(message):
@@ -53,15 +143,21 @@ def start_framework():
     """Put the framework on the path and start it, deferred until Maya is up."""
 
     root = framework_path()
+    if not root:
+        OpenMaya.MGlobal.displayWarning(
+            'MCA: the framework path is not known. Start this DCC from the MCA '
+            'launcher, or set MCA_FRAMEWORK_PATH to the packages folder.')
+        return
     if root not in sys.path:
         sys.path.append(root)
+    claim_namespace(root)
 
     try:
         from mca.common.startup.dccs import bootstrap
     except ImportError as error:
         OpenMaya.MGlobal.displayWarning(
-            'MCA: the framework was not found at {} ({}). Maya will run without the '
-            'pipeline tools.'.format(root, error))
+            'MCA: the framework was not found at {} ({}). {}. Maya will run without '
+            'the pipeline tools.'.format(root, error, namespace_report()))
         return
 
     bootstrap.start('maya', say=say)
@@ -71,8 +167,11 @@ def start_command_ports():
     """Open the ports an assistant drives this Maya through, when mca-mcp is installed."""
 
     root = framework_path()
+    if not root:
+        return
     if root not in sys.path:
         sys.path.append(root)
+    claim_namespace(root)
 
     try:
         from mca.common.startup.dccs import bootstrap
