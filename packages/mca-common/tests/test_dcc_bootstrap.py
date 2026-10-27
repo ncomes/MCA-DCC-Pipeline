@@ -125,6 +125,60 @@ def body(suite):
     suite.check('pymel is not in it, and nothing installs it during a DCC start-up any more',
                 'pymel' not in named, str(named))
 
+    # ---------------------------------------------------------------- #
+    # Teaching an already-imported mca about roots added later
+    # ---------------------------------------------------------------- #
+    #
+    # repair_namespace works on the live sys.modules['mca'], so each check swaps in a
+    # stand-in and puts the real one back afterwards.
+    class FakeNamespace(object):
+        def __init__(self, paths):
+            self.__path__ = list(paths)
+
+    def with_fake(paths, roots):
+        real = sys.modules.get('mca')
+        sys.modules['mca'] = FakeNamespace(paths)
+        try:
+            added = bootstrap.repair_namespace(*roots)
+            return added, list(sys.modules['mca'].__path__)
+        finally:
+            if real is None:
+                sys.modules.pop('mca', None)
+            else:
+                sys.modules['mca'] = real
+
+    one = os.path.join(temp, 'pkg_one')
+    os.makedirs(os.path.join(one, 'mca'), exist_ok=True)
+
+    added, paths = with_fake([], [one])
+    suite.check('a root holding an mca folder is added to the live namespace',
+                added == [os.path.join(one, 'mca')] and len(paths) == 1, str(paths))
+
+    added, paths = with_fake([os.path.join(one, 'mca')], [one])
+    suite.check('and adding it again does nothing',
+                added == [] and len(paths) == 1, str(paths))
+
+    # The bug the copy in start_menus had: it compared paths as plain strings, so the
+    # same folder spelled another way went in a second time.
+    shouty = os.path.join(one.upper(), 'MCA') if os.name == 'nt' else os.path.join(one, '.', 'mca')
+    added, paths = with_fake([shouty], [one])
+    suite.check('the same folder spelled differently is still the same folder',
+                added == [] and len(paths) == 1, str(paths))
+
+    missing = os.path.join(temp, 'pkg_none')
+    os.makedirs(missing, exist_ok=True)
+    added, paths = with_fake([], [missing])
+    suite.check('a root with no mca folder in it is left alone',
+                added == [] and paths == [], str(paths))
+
+    real = sys.modules.pop('mca', None)
+    try:
+        suite.check('and nothing to repair when mca has not been imported at all',
+                    bootstrap.repair_namespace(one) == [])
+    finally:
+        if real is not None:
+            sys.modules['mca'] = real
+
     suite.note('checks_written', len(suite.checks))
 
 

@@ -50,9 +50,6 @@ except ImportError:  # pragma: no cover
     _LOAD_CONFIG = None
 
 _AI_PACKAGE_NAMES = ("mca-ai",)
-_AI_NAMESPACE_PATHS = (
-    ("mca", "mca-ai", "mca"),
-)
 _AI_RUNTIME: Dict[str, object] = {}
 _AI_STARTED = False
 
@@ -443,28 +440,27 @@ def _cleanup_ai_paths(paths: List[str]) -> None:
 
 def _extend_mca_namespace() -> None:
     """
-    Extend the existing ``mca`` namespace package with the AI Core module path when present.
+    Let an already-imported ``mca`` see the AI package's folder as well.
+
+    Delegates to :func:`mca.common.startup.dccs.bootstrap.repair_namespace`, which is the
+    one implementation of this. There used to be a copy here, and it had drifted: it
+    compared paths as plain strings, so on Windows the same folder spelled two ways was
+    appended twice, and it never checked the folder existed before adding it.
+
+    The packages named are the ones :func:`_ensure_ai_sys_path` puts on ``sys.path``, which
+    is the right pairing - a package the namespace can see but ``sys.path`` cannot, or the
+    other way round, imports in one direction only.
 
     :return: ``None``.
     :rtype: None
     """
 
-    from importlib import invalidate_caches
+    from mca.common.startup.dccs import bootstrap
 
-    for namespace, package_root, relative in _AI_NAMESPACE_PATHS:
-        module = sys.modules.get(namespace)
-        if module is None:
-            continue
-
-        namespace_path = getattr(module, "__path__", None)
-        if namespace_path is None:
-            continue
-
-        candidate = str(_packages_root() / package_root / relative)
-        if candidate not in namespace_path:
-            namespace_path.append(candidate)
-            invalidate_caches()
-            logger.debug(f'Extended namespace {namespace} with {candidate}')
+    roots = [str(_packages_root() / name) for name in _AI_PACKAGE_NAMES]
+    added = bootstrap.repair_namespace(*roots)
+    if added:
+        logger.debug('Extended the mca namespace with %s', ', '.join(added))
 
 
 def _import_ai_module(module_name: str) -> ModuleType:

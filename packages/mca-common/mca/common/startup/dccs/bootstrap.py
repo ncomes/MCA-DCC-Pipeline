@@ -97,6 +97,10 @@ def repair_namespace(*roots):
     Appending to the live ``mca.__path__`` is what makes the two meet. The import caches
     are invalidated afterwards because a failed import of ``mca.common`` is remembered.
 
+    This is the one implementation. ``userSetup.claim_namespace`` is a deliberate copy of
+    it - that script cannot import from ``mca.common``, because making that import work is
+    what it is for - so a change here belongs there too.
+
     :param roots: Folders just put on ``sys.path``, each of which may hold an ``mca``.
     :return: The namespace folders added.
     :rtype: list(str)

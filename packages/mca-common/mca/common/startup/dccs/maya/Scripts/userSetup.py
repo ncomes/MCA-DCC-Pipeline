@@ -93,6 +93,13 @@ def claim_namespace(root):
     'mca.common'" while the folder sits plainly on disk. Appending to the live
     ``mca.__path__`` is what lets the two meet.
 
+    This is deliberately a copy of ``bootstrap.repair_namespace``, and must stay one.
+    This file cannot import from ``mca.common``: making that import work is the entire
+    reason it runs. So the two are kept to the same logic by hand - case-normalised
+    comparison, an ``isdir`` check before appending, and ``invalidate_caches`` after -
+    and a change to one belongs in the other. ``repair_namespace`` is the one with the
+    tests; it takes several roots, this takes the one root that matters here.
+
     :param str root: ``<packages>/mca-common``, the folder holding ``mca``.
     :return: Whether anything was added.
     :rtype: bool
