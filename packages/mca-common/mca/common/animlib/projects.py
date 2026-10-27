@@ -63,12 +63,18 @@ def get_default_root():
     This is the folder beside Assetlist under the common tools path - where the
     library lives when nobody has gone looking for another one.
 
-    :return: Absolute path to the default library root.
+    Answers '' when there is no common tools path, rather than a path. os.path.join('',
+    'AnimationLibrary') is the relative string 'AnimationLibrary', which reads as a
+    perfectly good answer and then makes a library folder in whatever the working
+    directory happens to be. :func:`paths.under` is the convention everywhere else: no
+    root, no path.
+
+    :return: Absolute path to the default library root, or '' when there is none.
     :rtype: str
     """
 
     from mca.common.paths import paths
-    return os.path.normpath(os.path.join(paths.get_common_tools_path(), 'AnimationLibrary'))
+    return paths.under(paths.get_common_tools_path(), 'AnimationLibrary')
 
 
 def _normalise(root):
