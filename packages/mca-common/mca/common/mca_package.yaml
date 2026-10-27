@@ -16,9 +16,19 @@ required: True
 
 # This describes the package as it is today, not as it will be: every entry is checked
 # against the disk, and a variable pointing at a folder that is not there is reported. The
-# resources, tools and pyqt entries come back as those pieces are ported.
+# tools and pyqt entries come back as those pieces are ported.
 environment:
   MCA_COMMON_BASE_PATH: '{self}'
+
+  # What the resources library registers at start-up. Without these, resources.icon()
+  # answers None for every name, every window gets no icon, and a Qt call that is
+  # handed None raises instead of drawing nothing.
+  MCA_RESOURCES_PATH: '{self}/resources'
+  MCA_ICONS_PATH: '{self}/resources/icons'
+  MCA_IMAGES_PATH: '{self}/resources/images'
+  MCA_STYLES_PATH: '{self}/resources/styles'
+  MCA_FONTS_PATH: '{self}/resources/fonts'
+  MCA_MOVIES_PATH: '{self}/resources/movies'
   MCA_COMMON_CONFIGS_PATH: '{self}/startup/configs'
   MCA_COMMON_STARTUP_PATH: '{self}/startup'
   MCA_COMMON_PATHS:
