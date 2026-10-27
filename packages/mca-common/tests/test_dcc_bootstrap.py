@@ -122,8 +122,21 @@ def body(suite):
     suite.check('and it names the packages the framework cannot start without',
                 all(one in named for one in ('numpy', 'pyyaml', 'psutil', 'anytree')),
                 str(named))
-    suite.check('pymel is not in it, and nothing installs it during a DCC start-up any more',
-                'pymel' not in named, str(named))
+    # PyMEL is in the list on purpose, and that is a reversal of what this used to assert.
+    # Maya stopped shipping PyMEL after 2025, so leaving it to the DCC leaves Maya 2026
+    # with none. It is pinned here and installed by the launcher per Maya version, into
+    # that version's own folder - the thing actually worth preventing is a user-site pip
+    # install, which silently shadows what the older Mayas do ship, and PYTHONNOUSERSITE
+    # is what prevents that.
+    suite.check('pymel is managed here, because Maya has not shipped it since 2025',
+                'pymel' in named, str(named))
+
+    cache_folder = os.path.join(root, 'mca', 'common', 'startup', 'dependencies',
+                                'pymel_cache')
+    for cache_name in ('mayaApi2026.py', 'mayaCmdsList2026.py'):
+        cache = os.path.join(cache_folder, cache_name)
+        suite.check('and %s ships beside it, because PyMEL cannot build that one itself'
+                    % cache_name, os.path.isfile(cache), cache)
 
     # ---------------------------------------------------------------- #
     # Teaching an already-imported mca about roots added later
