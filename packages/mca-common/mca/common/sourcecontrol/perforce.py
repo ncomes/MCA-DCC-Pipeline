@@ -255,6 +255,30 @@ class Perforce(base.SourceControl):
         return [line for line in output.splitlines() if line.strip()]
 
     # -- running p4 ----------------------------------------------------- #
+    def _unavailable(self, unreachable_message):
+        """
+        Why p4 cannot be used right now, or None when it can.
+
+        Two different answers, and telling them apart is the point. No p4 on the machine
+        at all is a plain failure, and a caller can say so. A p4 that is installed but
+        cannot reach its server is the ordinary state of a machine that does not use
+        Perforce, and is worth a gentler sentence - the files are written either way.
+
+        Both gates below ask this, in this order. Asking them separately is how the
+        "not installed" case came to be reported as "not answering": the per-file gate
+        gets there before :meth:`_run` does, and only checked reachability.
+
+        :param str unreachable_message: What to say when p4 is there but the server is not.
+        :return: A failed Result, or None.
+        :rtype: base.Result or None
+        """
+
+        if not self.executable:
+            return base.Result(False, 'p4 is not installed on this machine.')
+        if not self.server_available():
+            return base.Result(False, unreachable_message)
+        return None
+
     def _run(self, arguments, connected=True, send=None, tagged=False):
         """
         Run one p4 command.
@@ -269,19 +293,15 @@ class Perforce(base.SourceControl):
         :rtype: (Result, str)
         """
 
-        if not self.executable:
-            return base.Result(False, 'p4 is not installed on this machine.'), ''
-
-        # The one gate, here rather than per operation. submit() reached
-        # create_changelist() before any per-file check, so gating the file loop alone
-        # still left afive-minute wait behind a progress dialog with no cancel button.
-        # Every command goes through this function, so this is the place that cannot be
-        # forgotten when a new one is added.
-        if not self.server_available():
-            return base.Result(
-                False,
-                'Perforce is not answering, so "{0}" was not run. Files on disk are '
-                'unaffected.'.format(' '.join(str(one) for one in arguments[:2]))), ''
+        # The gate that cannot be forgotten: every command comes through here. submit()
+        # reaches create_changelist() before any per-file check, so gating the file loop
+        # alone still left a five-minute wait behind a progress dialog with no cancel
+        # button.
+        blocked = self._unavailable(
+            'Perforce is not answering, so "{0}" was not run. Files on disk are '
+            'unaffected.'.format(' '.join(str(one) for one in arguments[:2])))
+        if blocked is not None:
+            return blocked, ''
 
         command = [self.executable]
         if tagged:
@@ -337,11 +357,11 @@ class Perforce(base.SourceControl):
 
         # Asked once per session. Without it, an unreachable server costs TIMEOUT per file,
         # and these run from UI callbacks - ticking a checkbox froze the asset register.
-        if not self.server_available():
-            return base.Result(
-                False,
-                'Perforce is not answering, so {0} was skipped for {1} file(s). The files '
-                'are still written; they are just not checked out.'.format(verb, len(paths)))
+        blocked = self._unavailable(
+            'Perforce is not answering, so {0} was skipped for {1} file(s). The files '
+            'are still written; they are just not checked out.'.format(verb, len(paths)))
+        if blocked is not None:
+            return blocked
 
         problems = []
         for path in paths:
