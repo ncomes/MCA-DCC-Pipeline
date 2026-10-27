@@ -82,13 +82,29 @@ def project_root():
     return from_env(consts.MCA_PROJECT_ROOT)
 
 
+#: The folder the asset list and the other shared tools sit in, inside the folder the
+#: project's preferences name as its common tools.
+#:
+#: The depot keeps them one level down - ``<common tools>/Tools/Assetlist`` - so the name
+#: is here rather than spelled into the path builders.
+COMMON_TOOLS_SUBFOLDER = 'Tools'
+
+
 def get_common_tools_path():
     """
-    :return: The project's shared tools folder, or ''.
+    The project's shared tools folder - where the asset list lives.
+
+    Built from the ``MCA_COMMON_TOOLS`` preference the launcher collects, not from the
+    project root. The version this replaces returned
+    ``<project root>/Tools/Common/Tools``, which happens to be right for a depot laid out
+    like the original one and wrong for every other project - so a path set in the
+    launcher was ignored and the asset list was looked for in a folder nobody made.
+
+    :return: The folder, or '' when the preference is not set.
     :rtype: str
     """
 
-    return from_env(consts.MCA_PROJECT_ROOT, 'Tools', 'Common', 'Tools')
+    return under(get_common_path(), COMMON_TOOLS_SUBFOLDER)
 
 
 def get_common_path():

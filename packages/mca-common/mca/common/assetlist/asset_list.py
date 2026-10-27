@@ -33,11 +33,26 @@ import os
 from mca.common import log
 from mca.common import sourcecontrol
 from mca.common.assetlist import asset_paths, asset_prefixes
-from mca.common.paths import path_utils, paths
+from mca.common.paths import path_utils, paths, project_paths
 from mca.common.utils import fileio
 
 
 logger = log.MCA_LOGGER
+
+def _art_root():
+    """
+    The folder an asset's relative path is relative to.
+
+    Assets are recorded relative to the art root, not the project root. In the original
+    depot those were the same folder, so joining onto the project root worked by accident;
+    in a project that keeps its art in a subfolder it silently pointed one level too high
+    and every asset reported a folder that does not exist.
+
+    :return: The art root, or the project root when no art path is set.
+    :rtype: str
+    """
+
+    return project_paths.get_art_path() or paths.project_root()
 
 
 class AssetBaseEntry(object, metaclass=abc.ABCMeta):
@@ -245,7 +260,7 @@ class AssetBaseEntry(object, metaclass=abc.ABCMeta):
         if not path:
             return ''
 
-        return path_utils.to_full_path(path)
+        return path_utils.to_full_path(path, added_path=_art_root() or None)
 
     # -- the folders inside it ------------------------------------------ #
     @abc.abstractmethod
@@ -425,7 +440,7 @@ class AssetBaseEntry(object, metaclass=abc.ABCMeta):
         if os.path.isabs(relative_path):
             return os.path.normpath(relative_path)
 
-        root = paths.project_root()
+        root = _art_root()
         if not root:
             return ''
 
