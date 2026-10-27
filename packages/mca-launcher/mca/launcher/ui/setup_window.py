@@ -16,7 +16,7 @@ import os
 
 # PySide6 imports
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QCheckBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout
 from PySide6.QtWidgets import QLabel, QLineEdit, QMainWindow, QPushButton, QVBoxLayout, QWidget
 
 # mca imports
@@ -125,6 +125,39 @@ class SetupWindow(QMainWindow):
         art_form.addRow('Common tools', self.tools_row)
         layout.addWidget(art)
 
+        # Source control is declared here rather than detected inside each DCC. Detection
+        # reads one machine-wide Perforce registry key, so a workspace set up for another
+        # project announces itself on this one and every tool that asks source control a
+        # question waits for a server that is not there.
+        source = QGroupBox('Source control (optional)')
+        source_form = QFormLayout(source)
+        self.source_combo = QComboBox()
+        for choice in prefs.SOURCE_CONTROL_CHOICES:
+            self.source_combo.addItem(choice)
+        self.source_combo.setToolTip(
+            'Which source control this project uses. "none" means tools will not try to '
+            'check files out at all - which is what you want when there is no server to '
+            'reach.')
+        source_form.addRow('Backend', self.source_combo)
+
+        self.p4_rows = {}
+        for key, label in prefs.P4_FIELDS:
+            edit = QLineEdit()
+            self.p4_rows[key] = edit
+            source_form.addRow(label, edit)
+        self.p4_rows['MCA_P4_WORKSPACE'].setToolTip(
+            'Your own workspace for this project. It is per-user, which is why it lives in '
+            'your mca_preferences and is never checked in.')
+
+        self.detect_p4 = QPushButton('Detect from this machine')
+        self.detect_p4.setToolTip(
+            'Fill these in from the Perforce client installed here. Offered, not assumed.')
+        self.detect_p4.clicked.connect(self._detect_perforce)
+        source_form.addRow('', self.detect_p4)
+
+        self.source_combo.currentTextChanged.connect(self._sync_source_fields)
+        layout.addWidget(source)
+
         self.make_folders = QCheckBox('Create any art folders that do not exist yet')
         layout.addWidget(self.make_folders)
 
@@ -178,6 +211,13 @@ class SetupWindow(QMainWindow):
         for key, row in self.art_rows.items():
             row.set_text(project.values.get(key, ''))
         self.tools_row.set_text(project.values.get('MCA_COMMON_TOOLS', ''))
+
+        backend = str(project.values.get('MCA_SOURCE_CONTROL') or 'none').strip().lower()
+        index = self.source_combo.findText(backend)
+        self.source_combo.setCurrentIndex(index if index >= 0 else 0)
+        for key, edit in self.p4_rows.items():
+            edit.setText(str(project.values.get(key) or ''))
+        self._sync_source_fields(self.source_combo.currentText())
         self.install_now.setChecked(False)
         self.setWindowTitle('MCA Project Setup - {}'.format(project.project_name))
 
@@ -225,6 +265,13 @@ class SetupWindow(QMainWindow):
             return
 
         art_paths = {key: row.text() for key, row in self.art_rows.items() if row.text()}
+
+        # Carried in the same dict: save_project takes anything in prefs.PROJECT_KEYS, and
+        # environment_values() exports anything in it that is not empty.
+        backend = self.source_combo.currentText().strip() or 'none'
+        art_paths['MCA_SOURCE_CONTROL'] = backend
+        for key, edit in self.p4_rows.items():
+            art_paths[key] = edit.text().strip() if backend == 'perforce' else ''
         if self.make_folders.isChecked():
             self._create_folders([self.art_row.text()] + list(art_paths.values()))
 
@@ -246,6 +293,60 @@ class SetupWindow(QMainWindow):
 
         self.saved.emit(name)
         self.close()
+
+    # ------------------------------------------------------------------ #
+    # Source control
+    # ------------------------------------------------------------------ #
+    def _sync_source_fields(self, backend):
+        """
+        Enable the Perforce fields only while Perforce is the chosen backend.
+
+        :param str backend: The name now selected.
+        """
+
+        wanted = str(backend).strip().lower() == 'perforce'
+        for edit in self.p4_rows.values():
+            edit.setEnabled(wanted)
+        self.detect_p4.setEnabled(wanted)
+
+    def _detect_perforce(self):
+        """
+        Fill the Perforce fields in from the client installed on this machine.
+
+        Offered behind a button rather than done automatically, which is the whole point of
+        this group: the machine's Perforce registry key holds one connection for every
+        project on the machine, so reading it without being asked is how a workspace set up
+        for one studio ends up in use on an unrelated project.
+        """
+
+        try:
+            from mca.common.sourcecontrol import perforce as p4_backend
+        except ImportError as error:
+            dialogs.complain('Project Setup',
+                             'Could not read the Perforce client from here: {}'.format(error),
+                             self)
+            return
+
+        client = p4_backend.Perforce()
+        if not client.executable:
+            dialogs.complain('Project Setup',
+                             'No p4 client is installed on this machine, so there is '
+                             'nothing to read.', self)
+            return
+
+        found = {'MCA_P4_PORT': client.port,
+                 'MCA_P4_USER': client.user,
+                 'MCA_P4_WORKSPACE': client.workspace}
+        for key, value in found.items():
+            if value:
+                self.p4_rows[key].setText(str(value))
+
+        if not any(found.values()):
+            self.status.setText('The Perforce client here has no connection set up.')
+        else:
+            self.status.setText(
+                'Read from {}. Check the workspace is the one for this project.'
+                .format(getattr(client, 'source', 'this machine')))
 
     def _create_folders(self, paths):
         """

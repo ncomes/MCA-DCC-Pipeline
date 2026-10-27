@@ -57,7 +57,38 @@ PROJECT_KEYS = {
     # studio has one; somebody cloning this repo does not, and gets the vendor's
     # download page instead.
     'MCA_INSTALLERS_PATH': '',
+
+    # Source control, declared per project rather than detected. '' and 'none' both mean
+    # no source control; a backend name such as 'perforce' turns it on.
+    #
+    # Detection is what this replaces, and it reads one machine-wide Perforce registry key
+    # and applies it to every project - so a workspace set up for one studio announces
+    # itself on every other project on the machine and reaches for a server that is not
+    # there. Every tool that asks source control a question then waits for it.
+    #
+    # Default is none: a tool that needs source control should have it declared, not
+    # inferred from p4.exe being installed.
+    'MCA_SOURCE_CONTROL': 'none',
+
+    # The Perforce connection, when that is the backend. No password or ticket: p4 keeps
+    # those itself, and these preferences are the sort of thing that ends up in a
+    # screenshot. The workspace is per-user, which is why this lives in the user's own
+    # mca_preferences and is never checked in.
+    'MCA_P4_PORT': '',
+    'MCA_P4_USER': '',
+    'MCA_P4_WORKSPACE': '',
 }
+
+#: Source control backends a project can name, in the order a setup window should offer
+#: them. The first is the default.
+SOURCE_CONTROL_CHOICES = ('none', 'perforce')
+
+#: The Perforce keys, with the label a setup window should put beside each.
+P4_FIELDS = (
+    ('MCA_P4_PORT', 'Server (P4PORT)'),
+    ('MCA_P4_USER', 'User'),
+    ('MCA_P4_WORKSPACE', 'Workspace'),
+)
 
 #: The art folders, in the order a setup window should show them, and the folder name each
 #: one defaults to under the art path.

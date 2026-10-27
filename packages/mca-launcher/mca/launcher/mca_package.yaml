@@ -1,6 +1,6 @@
 # What the framework's package loader needs to know about this one.
 #
-# Nothing project-specific belongs here. The old file named a project ('Cryptid'), listed
+# Nothing project-specific belongs here. The old file named one specific project, listed
 # Maya versions that were already wrong, and pointed `commands` at a boot.py that does not
 # exist - all three of which are the kind of thing that only surfaces on somebody else's
 # machine.

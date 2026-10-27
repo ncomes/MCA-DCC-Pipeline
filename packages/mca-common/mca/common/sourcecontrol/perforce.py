@@ -37,7 +37,14 @@ REGISTRY_KEY = r'SOFTWARE\Perforce\Environment'
 REGISTRY_VALUES = (('P4CLIENT', 'workspace'), ('P4USER', 'user'), ('P4PORT', 'port'))
 
 #: Long enough for a sync of a few files, short enough that a hung p4 does not hang Maya.
-TIMEOUT = 300
+#:
+#: This is the ceiling for a command that is really doing work. It is not what an
+#: unreachable server costs: that is answered by the probe below, before any command runs.
+TIMEOUT = int(os.getenv('MCA_P4_TIMEOUT', '300'))
+
+#: How long to wait for the server to say it is there. Every file operation is gated on
+#: this, so it has to be short enough to be spent on a dead server without anyone noticing.
+PROBE_TIMEOUT = int(os.getenv('MCA_P4_PROBE_TIMEOUT', '5'))
 
 
 class Perforce(base.SourceControl):
@@ -59,6 +66,10 @@ class Perforce(base.SourceControl):
         self.user = ''
         self.port = ''
         self.workspace = ''
+        #: Where the connection came from, for saying so when it is the wrong one.
+        self.source = 'nothing'
+        #: None until the server has been probed; True/False after.
+        self._reachable = None
         self._read_environment()
         if self.executable and self.user and not self.workspace:
             self.workspace = self.find_workspace()
@@ -66,13 +77,28 @@ class Perforce(base.SourceControl):
     # -- what we know about this machine -------------------------------- #
     def _read_environment(self):
         """
-        Read the connection out of the registry, then let real environment variables win.
+        Work out which Perforce connection to use, in order of how much it was meant.
+
+        1. The project's own settings - ``MCA_P4_PORT``, ``MCA_P4_USER``,
+           ``MCA_P4_WORKSPACE`` - which the launcher exports from that project's
+           preferences. Somebody chose these, for this project.
+        2. ``P4PORT`` and friends in the environment, for a farm job or a shell that has
+           been pointed somewhere on purpose.
+        3. The Perforce registry key, which is a guess.
+
+        The order matters more than it looks. The registry holds **one** connection for the
+        whole machine, so taking it first means every project inherits whichever workspace
+        was set up last - a workspace belonging to a different studio, announcing itself on
+        a project that has nothing to do with it, and reaching for a server that is not
+        there. Settings beat environment beats guess.
 
         The version this replaces logged ``CRITICAL ERROR: Install perforce`` at error level
         whenever the key was missing, which is every machine that does not have Perforce -
         including every build agent and every artist at a studio that uses something else.
         Not having Perforce is not an error.
         """
+
+        self.source = 'nothing'
 
         if platforms.IS_WINDOWS:
             try:
@@ -91,12 +117,27 @@ class Perforce(base.SourceControl):
             except OSError:
                 logger.debug('No Perforce connection in the registry (%s).', REGISTRY_KEY)
 
+        if any(getattr(self, attribute, '') for _, attribute in REGISTRY_VALUES):
+            self.source = 'the Perforce registry key'
+
         # P4PORT and friends in the environment are how a farm job or a second workspace is
         # pointed somewhere else, so they come after the registry, not before it.
         for value_name, attribute in REGISTRY_VALUES:
             value = os.environ.get(value_name, '')
             if value:
                 setattr(self, attribute, value.strip())
+                self.source = 'P4* environment variables'
+
+        # The project's own settings win over both: they are the only ones that were chosen
+        # for *this* project rather than for this machine.
+        for value_name, attribute in consts.P4_SETTINGS:
+            value = os.environ.get(value_name, '')
+            if value:
+                setattr(self, attribute, value.strip())
+                self.source = "this project's settings"
+
+        if self.workspace:
+            logger.debug('Perforce workspace "%s" from %s.', self.workspace, self.source)
 
     def available(self):
         """
@@ -105,6 +146,51 @@ class Perforce(base.SourceControl):
         """
 
         return bool(self.executable and self.workspace)
+
+    def server_available(self, force=False):
+        """
+        Whether the server actually answers - asked once, then remembered.
+
+        ``available()`` only says Perforce is *configured*. A configured server that is
+        unreachable - off the VPN, a laptop at home, a studio that has moved on - still
+        accepts every command and then sits there until :data:`TIMEOUT`. One ticked
+        checkbox in the asset register saves a file, which checks it out, which ran
+        ``p4 reconcile`` and blocked the UI for five minutes.
+
+        One short ``p4 info`` answers it for the session. The answer is cached because the
+        alternative is paying the probe on every file.
+
+        :param bool force: Ask again rather than trusting the cached answer, for the case
+            where somebody has connected since.
+        :return: Whether commands are worth running.
+        :rtype: bool
+        """
+
+        if not self.executable:
+            return False
+        if self._reachable is not None and not force:
+            return self._reachable
+
+        try:
+            finished = subprocess.run(
+                [self.executable] + (['-p', self.port] if self.port else []) + ['info'],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                timeout=PROBE_TIMEOUT,
+            )
+            self._reachable = finished.returncode == 0
+        except subprocess.TimeoutExpired:
+            logger.warning('Perforce did not answer within %ss, so source control is off '
+                           'for this session. Everything else carries on; call '
+                           'server_available(force=True) to look again.', PROBE_TIMEOUT)
+            self._reachable = False
+        except OSError as error:
+            logger.warning('Could not run p4 (%s), so source control is off.', error)
+            self._reachable = False
+
+        return self._reachable
 
     def info(self):
         """
@@ -186,6 +272,17 @@ class Perforce(base.SourceControl):
         if not self.executable:
             return base.Result(False, 'p4 is not installed on this machine.'), ''
 
+        # The one gate, here rather than per operation. submit() reached
+        # create_changelist() before any per-file check, so gating the file loop alone
+        # still left afive-minute wait behind a progress dialog with no cancel button.
+        # Every command goes through this function, so this is the place that cannot be
+        # forgotten when a new one is added.
+        if not self.server_available():
+            return base.Result(
+                False,
+                'Perforce is not answering, so "{0}" was not run. Files on disk are '
+                'unaffected.'.format(' '.join(str(one) for one in arguments[:2]))), ''
+
         command = [self.executable]
         if tagged:
             command.append('-ztag')
@@ -237,6 +334,14 @@ class Perforce(base.SourceControl):
         paths = base.as_paths(paths)
         if not paths:
             return base.Result(False, 'No files were given to {0}.'.format(verb))
+
+        # Asked once per session. Without it, an unreachable server costs TIMEOUT per file,
+        # and these run from UI callbacks - ticking a checkbox froze the asset register.
+        if not self.server_available():
+            return base.Result(
+                False,
+                'Perforce is not answering, so {0} was skipped for {1} file(s). The files '
+                'are still written; they are just not checked out.'.format(verb, len(paths)))
 
         problems = []
         for path in paths:

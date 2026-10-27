@@ -26,6 +26,26 @@ MCA_COMMON_ROOT = 'MCA_COMMON_ROOT'
 MCA_COMMON_CONFIG = 'MCA_COMMON_CONFIG'
 MCA_COMMON_TOOLS = 'MCA_COMMON_TOOLS'
 
+# ---------------------------------------------------------------------------- #
+# Source control
+# ---------------------------------------------------------------------------- #
+#: Which source control this project uses: '' or 'none' for no source control, or a
+#: backend name such as 'perforce'. Declared per project rather than detected, because
+#: detection reads one machine-wide Perforce registry key and applies it to every project
+#: - which is how a workspace belonging to a different studio ends up in use here.
+MCA_SOURCE_CONTROL = 'MCA_SOURCE_CONTROL'
+
+#: The Perforce connection for this project. Set by the launcher from the project's
+#: preferences. Deliberately no password or ticket: p4 keeps those itself, and a
+#: preferences file is something people paste into screenshots.
+MCA_P4_PORT = 'MCA_P4_PORT'
+MCA_P4_USER = 'MCA_P4_USER'
+MCA_P4_WORKSPACE = 'MCA_P4_WORKSPACE'
+
+#: Name in the environment to attribute on :class:`sourcecontrol.perforce.Perforce`,
+#: newest-first in the order they are consulted.
+P4_SETTINGS = ((MCA_P4_PORT, 'port'), (MCA_P4_USER, 'user'), (MCA_P4_WORKSPACE, 'workspace'))
+
 #: A folder of DCC installers, when the studio keeps one. The launcher writes it into a
 #: project's preferences, so the framework should know the name even though nothing here
 #: installs anything.
