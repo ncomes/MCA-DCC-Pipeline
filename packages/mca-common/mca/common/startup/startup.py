@@ -72,6 +72,19 @@ def startup_init(project_name, dcc, config_file=None, quiet=False, force=False):
         logger.error('Starting the framework needs a DCC name, such as "maya".')
         return False
 
+    if not quiet:
+        logger.info('Creating MCA Python Common framework environment ...')
+        print('\n' + '=' * 118 + '\n')
+        print(r"""
+
+ ____                                 _____                                            _
+|  _ \ __   __ _   _      ___  __  _ |  ___| __ __ _ _ __ ___   _____      _____  _ __| | __
+| |_) |\ \ / /| | | |___ / _ \|  \| || |_ | '__/ _` | '_ ` _ \ / _ \ \ /\ / / _ \| '__| |/ /
+|  __/  \ V /|_ _|| |_  | (_) | | \ ||  _|| | | (_| | | | | | |  __/\ V  V / (_) | |  |   <
+|_|      |_|  |_| |_| |_|\___/|_|\__||_|  |_|  \__,_|_| |_| |_|\___| \_/\_/ \___/|_|  |_|\_\
+        """)
+        print('\n' + '=' * 118 + '\n')
+
     if STATE['loaded'] and not force:
         if not quiet:
             logger.info('The framework is already up for %s in %s.',
