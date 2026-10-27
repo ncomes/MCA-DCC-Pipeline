@@ -247,7 +247,10 @@ class MCADockableWindow(WindowBehaviour,
         self.main_layout.setContentsMargins(0, 2, 0, 0)
         self.setWidget(self.main_frame)
 
-        self.ui = load_ui_file(ui_path, self) if ui_path else None
+        # No parent here either: addWidget below does the parenting, onto main_frame.
+        # Passing ``self`` made the widget briefly a child of the QDockWidget, which is
+        # not where it ends up.
+        self.ui = load_ui_file(ui_path, None) if ui_path else None
         if self.ui is not None:
             self.main_layout.addWidget(self.ui)
 
@@ -297,10 +300,20 @@ class ParentableWidget(WindowBehaviour,
         self.main_layout = None
         self.setup_window(title or 'Panel', version='', style=style, single_instance=False)
 
-        self.ui = load_ui_file(ui_path, self) if ui_path else None
-        if self.ui is None:
-            self.main_layout = pygui.qtwidgets.QVBoxLayout(self)
-            self.main_layout.setContentsMargins(0, 0, 0, 0)
+        # The panel always gets a layout, and the loaded .ui goes in it.
+        #
+        # Loading with ``self`` as QUiLoader's parent - which is what this did - parents
+        # the widget here but puts it in no layout, because a plain QWidget has none by
+        # default. It then draws at whatever size Designer saved, in the top-left corner,
+        # and never follows the panel as it resizes; the panel in turn has no size hint to
+        # give its own container. This is the bug MCAMainWindow had, and it is quieter
+        # here: there QMainWindowLayout at least refused the widget outright.
+        self.main_layout = pygui.qtwidgets.QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.ui = load_ui_file(ui_path, None) if ui_path else None
+        if self.ui is not None:
+            self.main_layout.addWidget(self.ui)
 
 
 class ProgressBarWindow(MCAMainWindow):

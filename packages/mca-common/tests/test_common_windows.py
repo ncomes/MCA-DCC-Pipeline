@@ -126,6 +126,41 @@ def body(suite):
     suite.check('a panel has a layout and no window of its own',
                 panel.main_layout is not None and panel.parent() is host)
 
+    # A panel given a .ui must put it in its own layout. Loading it with the panel as
+    # QUiLoader's parent instead - which is what this used to do - parents the widget but
+    # lays nothing out, because a plain QWidget has no layout of its own. The .ui then
+    # draws at whatever size Designer saved and never follows the panel, and the panel
+    # answers sizeHint() with an invalid -1x-1, so its own container cannot size it either.
+    designer_file = os.path.join(suite.temp, 'panel.ui')
+    with open(designer_file, 'w') as handle:
+        handle.write('<?xml version="1.0" encoding="UTF-8"?>'
+                     '<ui version="4.0"><class>Panel</class>'
+                     '<widget class="QWidget" name="Panel">'
+                     '<property name="geometry">'
+                     '<rect><x>0</x><y>0</y><width>300</width><height>120</height></rect>'
+                     '</property>'
+                     '<layout class="QVBoxLayout" name="inner"><item>'
+                     '<widget class="QPushButton" name="go">'
+                     '<property name="text"><string>Go</string></property>'
+                     '</widget></item></layout>'
+                     '</widget><resources/><connections/></ui>')
+
+    designed = common_windows.ParentableWidget('Designed', ui_path=designer_file)
+    application.processEvents()
+    suite.check('a panel loads its .ui', designed.ui is not None)
+    suite.check('and puts it in its own layout rather than merely parenting it',
+                designed.main_layout is not None and
+                designed.main_layout.indexOf(designed.ui) >= 0)
+    suite.check('so the panel can tell its container what size it wants to be',
+                designed.sizeHint().isValid() and designed.sizeHint().width() > 0)
+
+    designed.resize(600, 300)
+    if designed.main_layout is not None:
+        designed.main_layout.activate()      # a hidden widget does not lay out on its own
+    application.processEvents()
+    suite.check('and the .ui follows the panel instead of sitting at its Designer size',
+                designed.ui is not None and designed.ui.width() == designed.width())
+
     class Owner(object):
         closed = False
 
