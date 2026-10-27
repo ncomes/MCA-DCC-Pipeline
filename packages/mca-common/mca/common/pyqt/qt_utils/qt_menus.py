@@ -65,6 +65,37 @@ class MainWindowsMenus(object):
         self.main_window = main_window
 
     @classmethod
+    def find(cls, menu_name, main_window):
+        """
+        Find the framework's menu in a window, without adding one.
+
+        ``create`` builds the menu when it is not there, which is the wrong thing for a
+        caller that means to tear one down: it makes the menu it is about to delete, and
+        in a DCC with no menu bar it answers None, so the ``.remove_menu()`` on the next
+        line raises.
+
+        :param str menu_name: The menu's object name.
+        :param main_window: A QMainWindow.
+        :return: The menu, or None when the window has no menu bar or no such menu.
+        :rtype: MainWindowsMenus or None
+        """
+
+        menubar = get_main_menu_menubar(main_window)
+        if menubar is None:
+            return None
+
+        # actions(), not children(). remove_menu ends in deleteLater(), which Qt defers
+        # until the event loop next runs - so a menu that has just been taken off the bar
+        # is still a child of it for the rest of the current call. Matching on children()
+        # hands that orphan back, and whatever is built into it is built into nothing.
+        # actions() only ever lists what is really on the menu bar.
+        for action in menubar.actions():
+            submenu = action.menu()
+            if submenu is not None and submenu.objectName() == menu_name:
+                return cls(submenu, main_window)
+        return None
+
+    @classmethod
     def create(cls, menu_name, main_window, icon=None, quiet=True):
         """
         Find the framework's menu in a window, or add it.
@@ -77,18 +108,18 @@ class MainWindowsMenus(object):
         :rtype: MainWindowsMenus or None
         """
 
+        found = cls.find(menu_name, main_window)
+        if found is not None:
+            if not quiet:
+                logger.info('The %s menu is already there.', menu_name)
+            return found
+
         menubar = get_main_menu_menubar(main_window)
         if menubar is None:
             # This used to be an AttributeError from .children() on None.
             logger.warning('That window has no menu bar, so %s cannot be added to it.',
                            menu_name)
             return None
-
-        for child in menubar.children():
-            if child.objectName() == menu_name:
-                if not quiet:
-                    logger.info('The %s menu is already there.', menu_name)
-                return cls(child, main_window)
 
         holder = cls(menubar, main_window)
         return cls(holder.add_menu(menu_name, icon=icon), main_window)
@@ -220,5 +251,9 @@ class MainWindowsMenus(object):
             # deleteLater alone leaves the empty title in the menu bar until Qt gets round
             # to it, which an artist sees.
             parent.removeAction(action())
+
+        # Orphan it now rather than at deleteLater time, so that nothing walking the menu
+        # bar's children for the rest of this call can still find it.
+        menu.setParent(None)
         menu.deleteLater()
         return True

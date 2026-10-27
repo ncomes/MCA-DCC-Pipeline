@@ -199,23 +199,32 @@ def menu_mca_quick_tools(maya_window):
     _attach_toolbox_menu(toolbox_menu)
 
 
+# Every menu this module puts on Maya's menu bar, so one list drives both building and
+# tearing down and the two cannot drift apart.
+MCA_MENUS = (MENU_HELP_DOCS, MENU_MCA_TOOLS, MENU_MCA_TOOLBOX)
+
+
 def create_menus():
     """
-    Creates the Maya menus at the top of Maya
+    Build the framework's menus on Maya's main menu bar.
+
+    Safe to call more than once: whatever is already there comes down first.
+
+    It was not safe before, and calling it twice - reloading the tools, re-running
+    start-up - gave a second copy of every entry. The guard that was meant to prevent
+    that looked for ACTION_PROJ_DOCS on the menu bar before clearing anything, and that
+    action has not existed since action_proj_docs() was commented out, so the guard never
+    matched and nothing was ever cleared. menu_mca_quick_tools() then called add_menu()
+    for each section, which builds a new QMenu unconditionally, so the submenus
+    multiplied along with the actions.
     """
 
-    # This is here because, if the menus are already open the actions don't close properly.
-    menu_bars = ma_main_window.get_main_menu_menubar()
-    for menu_bar in menu_bars.children():
-        if ACTION_PROJ_DOCS in menu_bar.objectName():
-            force_remove_actions()
-            break
-    # Give the UI a second to think
-    qtcore.QTimer.singleShot(1000, lambda: qtwidgets.QApplication.activeWindow())
-
-    # Get the main window and menu bar.
     maya_window = ma_main_window.get_maya_window()
-    maya_menu_bar = ma_main_window.get_main_menu_menubar()
+    if maya_window is None:
+        logger.debug('No Maya main window, so there is nowhere to hang the menus.')
+        return
+
+    remove_menus()
 
     # Add Project URL Documents Action
     #action_proj_docs(maya_menu_bar, maya_window)
@@ -229,39 +238,43 @@ def create_menus():
 
 def remove_menus():
     """
-    Removes the menus at the top of Maya
+    Take the framework's menus back off Maya's menu bar.
+
+    A menu that is not there is left alone. This used to reach for
+    ``MainWindowsMenus.create``, which *builds* a menu when it is missing - so removing
+    menus that had never been built built them, and in a batch Maya, where create answers
+    None, the ``.remove_menu()`` on the following line raised AttributeError.
     """
 
     maya_window = ma_main_window.get_maya_window()
+    if maya_window is None:
+        return
+
+    for menu_name in MCA_MENUS:
+        found = qt_menus.MainWindowsMenus.find(menu_name, maya_window)
+        if found is not None:
+            found.remove_menu()
+
     maya_menu_bar = ma_main_window.get_main_menu_menubar()
-
-    # Remove Help URLs
-    menu_inst = qt_menus.MainWindowsMenus.create(MENU_HELP_DOCS, maya_window)
-    menu_inst.remove_menu()
-
-    # Remove the Tools Menu
-    menu_tools_inst = qt_menus.MainWindowsMenus.create(MENU_MCA_TOOLS, maya_window)
-    menu_tools_inst.remove_menu()
-
-    # Remove the Quick Tools Menu
-    menu_tools_inst = qt_menus.MainWindowsMenus.create(MENU_MCA_TOOLBOX, maya_window)
-    menu_tools_inst.remove_menu()
-
-    # Remove URL
-    main_menu_inst = qt_menus.MainWindowsMenus(maya_menu_bar, maya_window)
-    main_menu_inst.remove_action(ACTION_PROJ_DOCS)
+    if maya_menu_bar is not None:
+        qt_menus.MainWindowsMenus(maya_menu_bar, maya_window).remove_action(ACTION_PROJ_DOCS)
 
     force_remove_actions()
 
 
 def force_remove_actions():
-    # force remove all mca actions
-    menu_bars = ma_main_window.get_main_menu_menubar()
-    action_list = [ACTION_PROJ_DOCS]
-    for menu_bar in menu_bars.children():
-        for act in action_list:
-            if act in menu_bar.objectName():
-                menu_bar.deleteLater()
+    """
+    Drop any framework action left sitting directly on the menu bar.
+    """
+
+    menu_bar = ma_main_window.get_main_menu_menubar()
+    if menu_bar is None:
+        return
+
+    for child in menu_bar.children():
+        name = child.objectName()
+        if any(action_name in name for action_name in (ACTION_PROJ_DOCS,)):
+            child.deleteLater()
 
 
 # The Perforce workspace combo box that used to be inserted into Maya's status line
