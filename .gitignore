@@ -65,3 +65,16 @@ desktop.ini
 # test_animlib builds a Characters/ tree beside itself rather than under the run's
 # temp folder. Regenerated on every run; never part of the source.
 packages/*/tests/Characters/
+
+# Test and run logs
+*.log
+
+# --- DCC droppings that land wherever the app is pointed -------------------- #
+#
+# Maya writes a project definition into whatever folder it is given as a project
+# root, including this one. It is machine state, not source.
+workspace.mel
+
+# Windows shortcuts. One of these ("launch.bat - Shortcut.lnk") was made while
+# testing the launcher and is not part of it.
+*.lnk

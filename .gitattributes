@@ -1,3 +1,21 @@
 # Batch files are read line by line by cmd itself: LF-only breaks block parsing.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# --- Art and resources ----------------------------------------------------- #
+#
+# Binary: no diff, no line-ending conversion.
+*.fbx binary
+*.png binary
+*.gif binary
+*.ttf binary
+*.mll binary
+*.lnk binary
+
+# Text, but written only by Maya or by our own serializers. Diffable, yet never
+# line-ending normalized - git must not rewrite the inside of a 9 MB .ma scene.
+*.ma  -text
+*.mel -text
+*.skl -text
+*.flag -text
+*.alist -text
