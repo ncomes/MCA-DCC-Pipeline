@@ -192,7 +192,13 @@ class MCAMainWindow(WindowBehaviour,
         self.setMinimumSize(self.INITIAL_WIDTH, self.INITIAL_HEIGHT)
         self.setContentsMargins(0, 0, 0, 0)
 
-        self.ui = load_ui_file(ui_path, self) if ui_path else None
+        # Loaded with no parent, then handed to setCentralWidget, which does the
+        # parenting itself. Passing ``self`` here instead makes QUiLoader add the
+        # loaded widget to this QMainWindow's own layout, which QMainWindowLayout
+        # does not accept - the widget ends up parented but never laid out, so it
+        # sits at its default 100x30 inside a full-size window and the tool looks
+        # like an empty grey panel.
+        self.ui = load_ui_file(ui_path, None) if ui_path else None
         if self.ui is not None:
             self.setCentralWidget(self.ui)
         else:
