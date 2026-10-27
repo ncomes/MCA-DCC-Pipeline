@@ -1,0 +1,143 @@
+{
+    "tool_name": "reanimator",
+    "display_name": "Reanimator - Animation Retargeter",
+    "api_module": "mca.mya.tools.reanimator.reanimator_api",
+    "functions": [
+        {
+            "name": "reanimator.bake_to_rig",
+            "function": "bake_to_rig",
+            "description": "Bake animation from skeleton to rig.",
+            "safety": "SAFE",
+            "parameters": {
+                "frag_rig": {
+                    "type": "string",
+                    "description": "Target rig. If None, uses first rig from selection.",
+                    "default": null
+                },
+                "skel_root": {
+                    "type": "string",
+                    "description": "",
+                    "default": null
+                },
+                "start_frame": {
+                    "type": "integer",
+                    "description": "Start frame for baking. If None, uses animation range.",
+                    "default": null
+                },
+                "end_frame": {
+                    "type": "integer",
+                    "description": "End frame for baking. If None, uses animation range.",
+                    "default": null
+                },
+                "append": {
+                    "type": "boolean",
+                    "description": "If True, appends animation after existing animation on rig.",
+                    "default": false
+                },
+                "motion_encode": {
+                    "type": "boolean",
+                    "description": "If True, aligns root motion when appending.",
+                    "default": false
+                }
+            }
+        },
+        {
+            "name": "reanimator.bake_to_rig_from_different_skeleton",
+            "function": "bake_to_rig_from_different_skeleton",
+            "description": "Retarget animation from a different character's skeleton to a rig.",
+            "safety": "SAFE",
+            "parameters": {
+                "frag_rig": {
+                    "type": "string",
+                    "description": "Target rig. If None, uses first rig from selection.",
+                    "default": null
+                },
+                "source_asset_name": {
+                    "type": "string",
+                    "description": "Name of source asset to get skeleton from. If None and skel_root not provided, will prompt user.",
+                    "default": null
+                },
+                "skel_root": {
+                    "type": "string",
+                    "description": "",
+                    "default": null
+                },
+                "start_frame": {
+                    "type": "integer",
+                    "description": "Start frame for baking. If None, uses animation range.",
+                    "default": null
+                },
+                "end_frame": {
+                    "type": "integer",
+                    "description": "End frame for baking. If None, uses animation range.",
+                    "default": null
+                },
+                "append": {
+                    "type": "boolean",
+                    "description": "If True, appends animation after existing animation on rig.",
+                    "default": false
+                },
+                "motion_encode": {
+                    "type": "boolean",
+                    "description": "If True, aligns root motion when appending.",
+                    "default": false
+                }
+            }
+        },
+        {
+            "name": "reanimator.bake_to_skeleton",
+            "function": "bake_to_skeleton",
+            "description": "Bake animation from rig to skeleton.",
+            "safety": "SAFE",
+            "parameters": {
+                "frag_rig": {
+                    "type": "string",
+                    "description": "Source rig. If None, uses first rig from selection.",
+                    "default": null
+                },
+                "start_frame": {
+                    "type": "integer",
+                    "description": "Start frame for baking. If None, uses animation range.",
+                    "default": null
+                },
+                "end_frame": {
+                    "type": "integer",
+                    "description": "End frame for baking. If None, uses animation range.",
+                    "default": null
+                },
+                "set_to_zero": {
+                    "type": "boolean",
+                    "description": "If True, shifts animation to start at frame 0.",
+                    "default": false
+                }
+            }
+        },
+        {
+            "name": "reanimator.get_selected_rig_and_skeleton",
+            "function": "get_selected_rig_and_skeleton",
+            "description": "Get the first FRAG rig and skeleton root from current selection.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "reanimator.get_selected_rigs",
+            "function": "get_selected_rigs",
+            "description": "Get all FRAG rigs from current selection.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "reanimator.reload_rig",
+            "function": "reload_rig",
+            "description": "Reload/reimport a rig while preserving animation.",
+            "safety": "SAFE",
+            "parameters": {
+                "frag_rig": {
+                    "type": "string",
+                    "description": "Rig to reload. If None, reloads all selected rigs.",
+                    "default": null
+                }
+            }
+        }
+    ]
+}

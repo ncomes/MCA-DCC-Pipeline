@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SaveSkinningV2</class>
+ <widget class="QMainWindow" name="SaveSkinningV2">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>600</width>
+    <height>500</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Save/Apply Skinning V2</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="mainLayout">
+    <property name="spacing">
+     <number>10</number>
+    </property>
+    <property name="leftMargin">
+     <number>10</number>
+    </property>
+    <property name="topMargin">
+     <number>10</number>
+    </property>
+    <property name="rightMargin">
+     <number>10</number>
+    </property>
+    <property name="bottomMargin">
+     <number>10</number>
+    </property>
+    <item>
+     <widget class="QGroupBox" name="assetGroupBox">
+      <property name="title">
+       <string>Asset Selection</string>
+      </property>
+      <layout class="QVBoxLayout" name="assetLayout">
+       <item>
+        <layout class="QHBoxLayout" name="categoryLayout">
+         <item>
+          <widget class="QLabel" name="categoryLabel">
+           <property name="text">
+            <string>Category:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="category_combo"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="searchLayout">
+         <item>
+          <widget class="QLabel" name="searchLabel">
+           <property name="text">
+            <string>Filter:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="search_field">
+           <property name="placeholderText">
+            <string>Type to filter assets...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QListWidget" name="asset_list">
+         <property name="selectionMode">
+          <enum>QAbstractItemView::SingleSelection</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QGroupBox" name="pathGroupBox">
+      <property name="title">
+       <string>Skin Data Path</string>
+      </property>
+      <layout class="QVBoxLayout" name="pathLayout">
+       <item>
+        <layout class="QHBoxLayout" name="infoLayout">
+         <item>
+          <widget class="QLabel" name="infoLabel">
+           <property name="text">
+            <string>Selected Asset:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="asset_info_label">
+           <property name="text">
+            <string>&lt;None&gt;</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">font-weight: bold; color: #4CAF50;</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="pathEditLayout">
+         <item>
+          <widget class="QLineEdit" name="path_field">
+           <property name="placeholderText">
+            <string>Skin data save/load path...</string>
+           </property>
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="browse_button">
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Browse...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="custom_path_checkbox">
+         <property name="text">
+          <string>Use Custom Path</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="path_status_label">
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="buttonLayout">
+      <item>
+       <widget class="QPushButton" name="save_button">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>40</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QPushButton { background-color: #2196F3; color: white; font-weight: bold; }</string>
+        </property>
+        <property name="text">
+         <string>Save Skin Weights</string>
+        </property>
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="apply_button">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>40</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }</string>
+        </property>
+        <property name="text">
+         <string>Apply Skin Weights</string>
+        </property>
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QLabel" name="status_label">
+      <property name="text">
+       <string>Ready. Select an asset to begin.</string>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">padding: 5px; background-color: #f0f0f0; border-radius: 3px;</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

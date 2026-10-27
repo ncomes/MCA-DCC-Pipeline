@@ -1,0 +1,186 @@
+{
+    "tool_name": "summoner",
+    "display_name": "Summoner - Import Assets",
+    "api_module": "mca.mya.tools.summoner.summoner_api",
+    "functions": [
+        {
+            "name": "summoner.create_organization_group",
+            "function": "create_organization_group",
+            "description": "Create an organization group for managing asset export.",
+            "safety": "SAFE",
+            "parameters": {
+                "asset_entry": {
+                    "type": "string",
+                    "description": "Asset entry from the registry",
+                    "required": true
+                },
+                "delete_existing": {
+                    "type": "boolean",
+                    "description": "If True, delete any existing org group for this asset first",
+                    "default": false
+                }
+            }
+        },
+        {
+            "name": "summoner.export_asset",
+            "function": "export_asset",
+            "description": "Export an asset (SM/SK) from the scene with optional skinning and skeleton export.",
+            "safety": "SAFE",
+            "parameters": {
+                "node": {
+                    "type": "string",
+                    "description": "A transform node in the export hierarchy",
+                    "required": true
+                },
+                "asset_entry": {
+                    "type": "string",
+                    "description": "Asset entry from the registry",
+                    "required": true
+                },
+                "update_skinning": {
+                    "type": "boolean",
+                    "description": "If True, export and update .skn skinning file",
+                    "default": false
+                },
+                "save_source": {
+                    "type": "boolean",
+                    "description": "If True, save the Maya source .ma file",
+                    "default": false
+                },
+                "export_skeleton": {
+                    "type": "boolean",
+                    "description": "If True, export and update .skel skeleton file",
+                    "default": false
+                }
+            }
+        },
+        {
+            "name": "summoner.find_asset_by_name",
+            "function": "find_asset_by_name",
+            "description": "Find an asset entry in the registry by name.",
+            "safety": "SAFE",
+            "parameters": {
+                "asset_name": {
+                    "type": "string",
+                    "description": "Name of the asset to find",
+                    "required": true
+                }
+            }
+        },
+        {
+            "name": "summoner.get_all_organization_groups",
+            "function": "get_all_organization_groups",
+            "description": "Get all organization groups in the current scene.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "summoner.get_organization_group",
+            "function": "get_organization_group",
+            "description": "Get the existing organization group for an asset, if it exists.",
+            "safety": "SAFE",
+            "parameters": {
+                "asset_entry": {
+                    "type": "string",
+                    "description": "Asset entry from the registry",
+                    "required": true
+                }
+            }
+        },
+        {
+            "name": "summoner.import_asset",
+            "function": "import_asset",
+            "description": "Import an asset from the registry by name.",
+            "safety": "SAFE",
+            "parameters": {
+                "asset_name": {
+                    "type": "string",
+                    "description": "Name of the asset in the registry (e.g., 'Frostwind')",
+                    "required": true
+                },
+                "import_mode": {
+                    "type": "string",
+                    "description": "Import mode - 'rig', 'skeletal_mesh', 'static_mesh', or 'full_skeleton'",
+                    "default": "rig"
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Optional namespace for the imported asset. If None, uses asset name.",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "summoner.import_full_skeleton",
+            "function": "import_full_skeleton",
+            "description": "Import the full skeleton with all joints (skeletal mesh + merged .skl joints).",
+            "safety": "SAFE",
+            "parameters": {
+                "asset_entry": {
+                    "type": "string",
+                    "description": "Asset entry from the registry",
+                    "required": true
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Optional namespace. If None, uses asset name.",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "summoner.import_rig",
+            "function": "import_rig",
+            "description": "Import an asset's rig (Maya .ma rig file with controls).",
+            "safety": "SAFE",
+            "parameters": {
+                "asset_entry": {
+                    "type": "string",
+                    "description": "Asset entry from the registry",
+                    "required": true
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Optional namespace. If None, uses asset name.",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "summoner.import_skeletal_mesh",
+            "function": "import_skeletal_mesh",
+            "description": "Import only the skeletal mesh (no rig controls).",
+            "safety": "SAFE",
+            "parameters": {
+                "asset_entry": {
+                    "type": "string",
+                    "description": "Asset entry from the registry",
+                    "required": true
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Optional namespace. If None, uses asset name.",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "summoner.import_static_mesh",
+            "function": "import_static_mesh",
+            "description": "Import only the static mesh (no skeleton or rig).",
+            "safety": "SAFE",
+            "parameters": {
+                "asset_entry": {
+                    "type": "string",
+                    "description": "Asset entry from the registry",
+                    "required": true
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Optional namespace. If None, uses asset name.",
+                    "default": null
+                }
+            }
+        }
+    ]
+}

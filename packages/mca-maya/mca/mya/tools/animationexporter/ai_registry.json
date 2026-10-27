@@ -1,0 +1,299 @@
+{
+    "tool_name": "animation_exporter",
+    "display_name": "Animation Exporter - FBX Export System",
+    "api_module": "mca.mya.tools.animationexporter.animationexporter_api",
+    "functions": [
+        {
+            "name": "animation_exporter.add_sequence",
+            "function": "add_sequence",
+            "description": "Register a new animation sequence for export.",
+            "safety": "SAFE",
+            "parameters": {
+                "rig": {
+                    "type": "object",
+                    "description": "FRAG rig. Uses selection if None.",
+                    "default": null
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name of the sequence (e.g. 'walk_cycle')",
+                    "default": null
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Full output path for FBX. Auto-generates if None.",
+                    "default": null
+                },
+                "frame_range": {
+                    "type": "array",
+                    "description": "[start_frame, end_frame]. Uses timeline if None.",
+                    "default": null
+                },
+                "start_at_zero": {
+                    "type": "boolean",
+                    "description": "Animation starts at frame 0 when exported",
+                    "default": true
+                },
+                "root_to_origin": {
+                    "type": "boolean",
+                    "description": "Root moves to origin when exported",
+                    "default": true
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional notes about this sequence",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.create_sequence_from_scene",
+            "function": "create_sequence_from_scene",
+            "description": "Auto-create an animation sequence using scene filename and timeline range.",
+            "safety": "SAFE",
+            "parameters": {
+                "rig": {
+                    "type": "string",
+                    "description": "The FRAG rig to create the sequence for.",
+                    "required": true
+                },
+                "sequence_name": {
+                    "type": "string",
+                    "description": "Optional name override. If None, derives from scene filename.",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.export_all_animations",
+            "function": "export_all_animations",
+            "description": "Batch export all registered animation sequences for selected rigs.",
+            "safety": "SAFE",
+            "parameters": {
+                "rigs": {
+                    "type": "array",
+                    "description": "List of FRAG rigs. Uses selection if None.",
+                    "default": null
+                },
+                "skip_sequences": {
+                    "type": "array",
+                    "description": "List of sequence paths/names to skip",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.export_animation",
+            "function": "export_animation",
+            "description": "Export a single animation sequence to FBX. Uses selected rig if none provided.",
+            "safety": "SAFE",
+            "parameters": {
+                "rig": {
+                    "type": "object",
+                    "description": "FRAG rig to export. Uses selection if None.",
+                    "default": null
+                },
+                "sequence_name": {
+                    "type": "string",
+                    "description": "Name of sequence to export (supports fuzzy matching)",
+                    "default": null
+                },
+                "sequence_path": {
+                    "type": "string",
+                    "description": "Full path to sequence. Takes priority over name.",
+                    "default": null
+                },
+                "frame_range": {
+                    "type": "array",
+                    "description": "[start_frame, end_frame]. Uses sequence range if None.",
+                    "default": null
+                },
+                "start_at_zero": {
+                    "type": "boolean",
+                    "description": "Shift animation to start at frame 0",
+                    "default": true
+                },
+                "root_to_origin": {
+                    "type": "boolean",
+                    "description": "Move root to origin during export",
+                    "default": true
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.export_selected_rig_animations",
+            "function": "export_selected_rig_animations",
+            "description": "Quick export all animations for selected rigs.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "animation_exporter.find_sequence_by_name",
+            "function": "find_sequence_by_name",
+            "description": "Find a sequence by name with optional fuzzy matching.",
+            "safety": "SAFE",
+            "parameters": {
+                "name": {
+                    "type": "string",
+                    "description": "Sequence name to search for.",
+                    "required": true
+                },
+                "rig": {
+                    "type": "string",
+                    "description": "The FRAG rig to search within. If None, searches all rigs.",
+                    "default": null
+                },
+                "fuzzy": {
+                    "type": "boolean",
+                    "description": "Whether to use fuzzy matching (default True).",
+                    "default": true
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.get_current_frame_range",
+            "function": "get_current_frame_range",
+            "description": "Get the current timeline frame range in Maya.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "animation_exporter.get_scene_rigs",
+            "function": "get_scene_rigs",
+            "description": "Get all FRAG rigs in the current Maya scene. Returns list of rig info dicts with name, asset_id, has_sequences, and sequence_count.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "animation_exporter.get_selected_rig",
+            "function": "get_selected_rig",
+            "description": "Get a single FRAG rig from the current Maya selection.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "animation_exporter.get_selected_rig_and_sequence",
+            "function": "get_selected_rig_and_sequence",
+            "description": "Smart detection of rig and sequence from selection and timeline.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "animation_exporter.get_selected_rigs",
+            "function": "get_selected_rigs",
+            "description": "Get all FRAG rigs from the current Maya selection.",
+            "safety": "SAFE",
+            "parameters": {}
+        },
+        {
+            "name": "animation_exporter.get_sequence_info",
+            "function": "get_sequence_info",
+            "description": "Get detailed information about a specific sequence.",
+            "safety": "SAFE",
+            "parameters": {
+                "rig": {
+                    "type": "object",
+                    "description": "FRAG rig. Uses selection if None.",
+                    "default": null
+                },
+                "sequence_name": {
+                    "type": "string",
+                    "description": "Name of sequence (supports fuzzy matching)",
+                    "default": null
+                },
+                "sequence_path": {
+                    "type": "string",
+                    "description": "Path of sequence. Takes priority over name.",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.list_sequences",
+            "function": "list_sequences",
+            "description": "Get all registered animation sequences for a rig or all rigs.",
+            "safety": "SAFE",
+            "parameters": {
+                "rig": {
+                    "type": "object",
+                    "description": "FRAG rig to query. Lists all if None.",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.remove_sequence",
+            "function": "remove_sequence",
+            "description": "Remove a sequence from the export system (does not delete FBX file).",
+            "safety": "CONFIRM",
+            "parameters": {
+                "rig": {
+                    "type": "object",
+                    "description": "FRAG rig. Uses selection if None.",
+                    "default": null
+                },
+                "sequence_name": {
+                    "type": "string",
+                    "description": "Name of sequence to remove",
+                    "default": null
+                },
+                "sequence_path": {
+                    "type": "string",
+                    "description": "Path of sequence to remove",
+                    "default": null
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.smart_export",
+            "function": "smart_export",
+            "description": "AI-friendly animation export that handles all setup automatically. Finds rigs (from selection or scene), creates sequences if needed (with ANIM_ prefix from scene filename), and exports to FBX. If multiple rigs exist and none selected, returns list of available rigs for user to choose.",
+            "safety": "SAFE",
+            "parameters": {
+                "rigs": {
+                    "type": "array",
+                    "description": "Optional list of rig names to export. Uses selection or scene search if None.",
+                    "default": null
+                },
+                "sequence_name": {
+                    "type": "string",
+                    "description": "Optional name for auto-created sequence. Prefixed with ANIM_ if not already. Derives from scene filename if None.",
+                    "default": null
+                },
+                "force_create_sequence": {
+                    "type": "boolean",
+                    "description": "If true, creates new sequence even if sequences exist.",
+                    "default": false
+                }
+            }
+        },
+        {
+            "name": "animation_exporter.update_sequence",
+            "function": "update_sequence",
+            "description": "Update an existing sequence's properties.",
+            "safety": "SAFE",
+            "parameters": {
+                "rig": {
+                    "type": "string",
+                    "description": "The FRAG rig owning the sequence. If None, uses selected rig.",
+                    "default": null
+                },
+                "sequence_name": {
+                    "type": "string",
+                    "description": "Name of sequence to update (supports fuzzy matching).",
+                    "default": null
+                },
+                "sequence_path": {
+                    "type": "string",
+                    "description": "Path of sequence to update. Takes priority over sequence_name.",
+                    "default": null
+                },
+                "kwargs": {
+                    "type": "string",
+                    "description": "",
+                    "required": true
+                }
+            }
+        }
+    ]
+}
