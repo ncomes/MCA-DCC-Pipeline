@@ -1,0 +1,35 @@
+format: 1
+id: rig_attachments_76b9c4
+name: Rig Attachments
+items:
+- id: attach_selected_rigs_9ae853
+  type: button
+  name: Attach Selected Rigs
+  tooltip: Attach two rigs together
+  command:
+    kind: callable
+    target: mca.mya.rigging.rig_utils:attach_rigs_cmd
+- id: detach_1df4b3
+  type: button
+  name: Detach
+  tooltip: Detach two rigs that are connected
+  command:
+    kind: callable
+    target: mca.mya.rigging.rig_utils:detach_rig_cmd
+- id: bake_and_detach_697467
+  type: button
+  name: Bake and Detach
+  tooltip: Detach two connected rigs and bake using the current timeline
+  command:
+    kind: python
+    code: 'from mca.mya.rigging import rig_utils; import pymel.core as pm; rig_utils.detach_rig_cmd(True,
+      pm.playbackOptions(q=True, min=True), pm.playbackOptions(q=True, max=True));
+
+      '
+- id: over_drivers_d96c34
+  type: panel
+  name: Over Drivers
+  tooltip: Adds an over driver or a "Constraint to two rig objects.
+  command:
+    kind: callable
+    target: mca.mya.tools.reanimator.overdrivers_small:OverDriverSmall

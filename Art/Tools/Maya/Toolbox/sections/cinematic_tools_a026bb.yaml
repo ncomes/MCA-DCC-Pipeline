@@ -1,0 +1,11 @@
+format: 1
+id: cinematic_tools_a026bb
+name: Cinematic Tools
+items:
+- id: scene_manager_7d9935
+  type: button
+  name: Scene Manager
+  tooltip: Launches the MCA Scene Manager.
+  command:
+    kind: callable
+    target: mca.mya.tools.scenemanager.scene_manager_tool:MCASceneManagerStartup

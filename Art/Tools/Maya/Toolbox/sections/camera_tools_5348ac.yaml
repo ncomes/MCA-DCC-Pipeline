@@ -1,0 +1,39 @@
+format: 1
+id: camera_tools_5348ac
+name: Camera Tools
+items:
+- id: copy_camera_a8c65b
+  type: button
+  name: Copy Camera
+  tooltip: Copies camera position and settings from first selected to second.
+  command:
+    kind: callable
+    target: mca.mya.utils.camera_utils:copy_camera_cmd
+- id: rig_camera_566616
+  type: button
+  name: Rig Camera
+  tooltip: Adds a camera rig to selected camera.
+  command:
+    kind: callable
+    target: mca.mya.utils.camera_utils:rig_cinematic_camera_cmd
+- id: select_camera_from_rig_5a7da7
+  type: button
+  name: Select Camera from Rig
+  tooltip: Selects the camera from selected camera rig.
+  command:
+    kind: callable
+    target: mca.mya.utils.camera_utils:select_camera_from_flag_cmd
+- id: create_ubercam_48fb9f
+  type: button
+  name: Create Ubercam
+  tooltip: Creates an ubercam
+  command:
+    kind: callable
+    target: mca.mya.utils.camera_utils:create_mca_ubercam_cmd
+- id: remove_ubercam_0d4acd
+  type: button
+  name: Remove Ubercam
+  tooltip: Removes ubercam from scene
+  command:
+    kind: callable
+    target: mca.mya.utils.camera_utils:remove_ubercam_cmd

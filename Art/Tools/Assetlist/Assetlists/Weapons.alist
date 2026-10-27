@@ -1,0 +1,29 @@
+{
+  "weapons_flaregun": {
+    "category": "Weapons",
+    "faction": "",
+    "name": "Flaregun",
+    "path": "Weapons/Handgun/Flaregun",
+    "subtype": "Handgun",
+    "description": "Default demo weapon. A one-handed flare gun for testing weapon attachment and sockets.",
+    "image": "",
+    "gender": "",
+    "engine_path": "",
+    "skeleton": "",
+    "body_type": "",
+    "asset_type": "SkeletalMesh",
+    "additional_types": [],
+    "slot": "",
+    "built_for": "",
+    "textures": [],
+    "engine_textures": [],
+    "materials": [],
+    "decals": [],
+    "dyes": [],
+    "attach_sockets": [],
+    "dye_overrides": {},
+    "path_flags": {},
+    "path_order": [],
+    "variant_of": ""
+  }
+}

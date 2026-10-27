@@ -1,0 +1,15 @@
+format: 1
+id: third_party_c55b53
+name: Third Party
+items:
+- id: studio_library_522bd5
+  type: button
+  name: Studio Library
+  tooltip: 3rd Party Animation Library
+  command:
+    kind: python
+    code: 'import studiolibrary;studiolibrary.main();
+
+      '
+  settings:
+    icon: studiolibrary.png

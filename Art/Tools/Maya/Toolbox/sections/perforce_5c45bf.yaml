@@ -1,0 +1,13 @@
+format: 1
+id: perforce_5c45bf
+name: Perforce
+items:
+- id: check_out_scene_fa341e
+  type: button
+  name: Check Out Scene
+  tooltip: Checks out the current scene in Perforce.
+  command:
+    kind: python
+    code: 'import pymel.core as pm;from mca.common.utils import fileio;sn = pm.sceneName();fileio.touch_and_checkout(sn);
+
+      '

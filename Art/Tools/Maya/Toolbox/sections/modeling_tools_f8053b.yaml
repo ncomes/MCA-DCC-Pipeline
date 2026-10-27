@@ -1,0 +1,12 @@
+format: 1
+id: modeling_tools_f8053b
+name: Modeling Tools
+items:
+- id: apply_cube_trick_to_selected_60a5a4
+  type: button
+  name: Apply Cube Trick to Selected
+  tooltip: For each selected shaped object, combine with a cube and delete the new faces.
+  command:
+    kind: python
+    code: "from mca.mya.modeling import geometry\nimport pymel.core as pm\n\nfor x in pm.selected():\n\
+      \tif isinstance(x, pm.nt.Transform):\n\t\tgeometry.apply_cube_trick(x)\n"

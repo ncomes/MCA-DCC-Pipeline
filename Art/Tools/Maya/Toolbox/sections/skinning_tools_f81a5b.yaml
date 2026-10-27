@@ -1,0 +1,29 @@
+format: 1
+id: skinning_tools_f81a5b
+name: Skinning Tools
+items:
+- id: import_export_skinning_a6b397
+  type: button
+  name: Import-Export Skinning
+  tooltip: Imports and exports skin weights as .sknr file in appropriate Skin Data folder based on asset
+    ID.
+  command:
+    kind: callable
+    target: mca.mya.tools.saveskinning.save_skinning_v2:SaveSkinningV2
+  settings:
+    icon: skin_weights_icon.png
+- id: apply_skinning_a3fbfd
+  type: panel
+  name: Apply Skinning
+  tooltip: Save and apply skins locally
+  command:
+    kind: callable
+    target: mca.mya.tools.applyskinning.apply_skinning_ui:ApplySkinningUi
+- id: smooth_skinning_d214cf
+  type: button
+  name: Smooth Skinning
+  tooltip: Smooths out selected vertices
+  command:
+    kind: python
+    code: "import pymel.core as pm\nfrom mca.mya.deformations import skin_utils\n\nvertices = pm.selected()\n\
+      for vertex in vertices:\n    skin_utils.smooth_vertex_weight(vertex)\n"

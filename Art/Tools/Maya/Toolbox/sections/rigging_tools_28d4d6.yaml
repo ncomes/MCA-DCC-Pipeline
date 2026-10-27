@@ -1,0 +1,24 @@
+format: 1
+id: rigging_tools_28d4d6
+name: Rigging Tools
+items:
+- id: asset_register_a23cfc
+  type: button
+  name: Asset Register
+  tooltip: Register rigs and assets in the project asset list (unified register).
+  command:
+    kind: callable
+    target: mca.mya.tools.assetregister.ma_asset_register:MayaUnifiedRegister
+- id: skeleton_builder_166103
+  type: button
+  name: Skeleton Builder
+  tooltip: Save and markup skeletons.
+  command:
+    kind: callable
+    target: mca.mya.tools.skeletonbuilder.skeletonbuilder_ui:SkeletonBuilder
+- id: rigging_tools_3f116d
+  type: button
+  name: Rigging Tools
+  command:
+    kind: callable
+    target: mca.mya.tools.riggingtools.rigging_tools:RiggingTools

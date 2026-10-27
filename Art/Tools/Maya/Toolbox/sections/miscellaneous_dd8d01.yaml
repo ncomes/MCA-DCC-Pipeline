@@ -1,0 +1,16 @@
+format: 1
+id: miscellaneous_dd8d01
+name: Miscellaneous
+items:
+- id: reload_scene_a4c9a8
+  type: button
+  name: Reload Scene
+  tooltip: Reloads the scene without saving
+  command:
+    kind: python
+    code: 'import maya.cmds as cmds;opened_file = cmds.file(q=True, sceneName=True);cmds.file(opened_file,
+      open=True, force=True);
+
+      '
+  settings:
+    icon: refresh.png

@@ -1,0 +1,29 @@
+{
+  "vehicles_default_vehicle": {
+    "category": "Vehicles",
+    "faction": "",
+    "name": "Default_Vehicle",
+    "path": "Vehicles/Main/Default_Vehicle",
+    "subtype": "Main",
+    "description": "Default demo vehicle. A prototype rideable vehicle for early locomotion testing.",
+    "image": "",
+    "gender": "",
+    "engine_path": "",
+    "skeleton": "",
+    "body_type": "",
+    "asset_type": "SkeletalMesh",
+    "additional_types": [],
+    "slot": "",
+    "built_for": "",
+    "textures": [],
+    "engine_textures": [],
+    "materials": [],
+    "decals": [],
+    "dyes": [],
+    "attach_sockets": [],
+    "dye_overrides": {},
+    "path_flags": {},
+    "path_order": [],
+    "variant_of": ""
+  }
+}

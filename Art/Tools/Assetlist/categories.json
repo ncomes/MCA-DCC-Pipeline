@@ -1,0 +1,144 @@
+{
+  "version": "2.0",
+  "categories": [
+    {
+      "name": "Characters",
+      "display_order": 0,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Armor",
+      "display_order": 1,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Body",
+      "display_order": 2,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Weapons",
+      "display_order": 3,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Heads",
+      "display_order": 4,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Faces",
+      "display_order": 5,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Hats",
+      "display_order": 6,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Props",
+      "display_order": 7,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Vehicles",
+      "display_order": 8,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Accessories",
+      "display_order": 9,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Cameras",
+      "display_order": 10,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Hair",
+      "display_order": 11,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Mask",
+      "display_order": 12,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Shirts",
+      "display_order": 13,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Shoes",
+      "display_order": 14,
+      "folder": "Assetlists"
+    }
+  ],
+  "primary_categories": [
+    {
+      "name": "Characters",
+      "display_order": 0,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Heads",
+      "display_order": 1,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Faces",
+      "display_order": 2,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Weapons",
+      "display_order": 3,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Props",
+      "display_order": 4,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Vehicles",
+      "display_order": 5,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Cameras",
+      "display_order": 6,
+      "folder": "Assetlists"
+    }
+  ],
+  "gear_categories": [
+    {
+      "name": "Body",
+      "display_order": 0,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Armor",
+      "display_order": 1,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Weapons",
+      "display_order": 2,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Heads",
+      "display_order": 3,
+      "folder": "Assetlists"
+    },
+    {
+      "name": "Faces",
+      "display_order": 4,
+      "folder": "Assetlists"
+    }
+  ]
+}

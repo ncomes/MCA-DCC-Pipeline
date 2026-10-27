@@ -1,0 +1,74 @@
+format: 1
+id: animation_and_rig_tools_997ecf
+name: Animation and Rig Tools
+items:
+- id: animation_library_5891f5
+  type: button
+  name: Animation Library
+  tooltip: 'Browse, apply and capture animation clips and poses.
+
+    Select a flag on the rig you want to work with first.'
+  command:
+    kind: callable
+    target: mca.mya.tools.animlibrary.animlibrary_ui:AnimationLibrary
+  settings:
+    icon: color/book_shelf.png
+- id: zero_flags_da5fa2
+  type: button
+  name: Zero Flags
+  tooltip: Resets the flag postions
+  command:
+    kind: callable
+    target: mca.mya.rigging.flags.flag_api:zero_flags_cmd
+- id: select_all_flags_4ee906
+  type: button
+  name: Select All Flags
+  tooltip: Selects all flags
+  command:
+    kind: callable
+    target: mca.mya.rigging.flags.flag_api:select_all_flags_cmd
+- id: single_frame_ikfk_switch_288fac
+  type: button
+  name: Single Frame IKFK Switch
+  tooltip: Switches between IKFK controls on single frame
+  command:
+    kind: python
+    code: 'from mca.mya.rigging import rig_utils
+
+      import pymel.core as pm
+
+      end_frame = pm.currentTime()
+
+      start_frame = end_frame - 1
+
+      rig_utils.switch_ikfk_components_cmd(start_frame=start_frame, end_frame=end_frame)
+
+      '
+- id: ik_fk_switch_150fd5
+  type: button
+  name: IK/FK Switch
+  tooltip: IK/FK Switch and Bake
+  command:
+    kind: callable
+    target: mca.mya.rigging.rig_utils:switch_ikfk_components_cmd
+- id: multi_constraint_switch_fa355c
+  type: button
+  name: Multi Constraint Switch
+  tooltip: Multi-Constraint or "Space Switch" tool.  This keeps the flag in place while switching
+  command:
+    kind: callable
+    target: mca.mya.tools.multiconstraintswitch.multiconstraint_switch:MulticonstraintSwitch
+- id: purge_rig_65df7a
+  type: button
+  name: Purge Rig
+  tooltip: Completely and safely removes a rig from a scene.
+  command:
+    kind: callable
+    target: mca.mya.rigging.rig_utils:purge_rig_cmd
+- id: timewarp_selection_ui_f537f9
+  type: button
+  name: Timewarp Selection UI
+  tooltip: Opens the Timewarp tool
+  command:
+    kind: callable
+    target: mca.mya.tools.timewarp.timewarp:Timewarp

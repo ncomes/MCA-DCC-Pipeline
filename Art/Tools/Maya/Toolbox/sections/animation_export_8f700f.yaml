@@ -1,0 +1,22 @@
+format: 1
+id: animation_export_8f700f
+name: Animation Exports
+items:
+- id: export_animation_ui_2aed21
+  type: button
+  name: Export Animation UI
+  tooltip: Opens the Animation Exporter
+  command:
+    kind: callable
+    target: mca.mya.tools.animationexporter.animationexporter_ui:AnimationExporter
+  settings:
+    icon: export.png
+- id: export_selected_animation_0f0f83
+  type: button
+  name: Export Selected Animation
+  tooltip: Exports animation on the currently selected rig or rigs
+  command:
+    kind: callable
+    target: mca.mya.tools.animationexporter.animationexporter_utils:quick_export_frag_sequences_cmd
+  settings:
+    icon: export.png

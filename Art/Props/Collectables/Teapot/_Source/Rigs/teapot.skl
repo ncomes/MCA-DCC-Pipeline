@@ -1,0 +1,206 @@
+{
+  "root": {
+    "world_matrix": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "parent_node": null,
+    "draw_label": false,
+    "attributes": [
+      {
+        "name": "skExport",
+        "channelBox": false,
+        "keyable": true,
+        "default": true,
+        "type": "bool",
+        "value": true,
+        "min": 0.0,
+        "max": 1.0,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "animationExport",
+        "channelBox": false,
+        "keyable": true,
+        "default": true,
+        "type": "bool",
+        "value": true,
+        "min": 0.0,
+        "max": 1.0,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "chainStart",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "root",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "chainEnd",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "root",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "skelRegion",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "root",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "skelSide",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "center",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "asset_id",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "defaultpropfordemo",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      }
+    ]
+  },
+  "base": {
+    "world_matrix": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      6.806998293735202,
+      0.0,
+      1.0
+    ],
+    "parent_node": "root",
+    "draw_label": false,
+    "attributes": [
+      {
+        "name": "skExport",
+        "channelBox": false,
+        "keyable": true,
+        "default": true,
+        "type": "bool",
+        "value": true,
+        "min": 0.0,
+        "max": 1.0,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "animationExport",
+        "channelBox": false,
+        "keyable": true,
+        "default": true,
+        "type": "bool",
+        "value": true,
+        "min": 0.0,
+        "max": 1.0,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "chainStart",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "base",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "chainEnd",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "base",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "skelSide",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "center",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      },
+      {
+        "name": "skelRegion",
+        "channelBox": false,
+        "keyable": true,
+        "default": null,
+        "type": "string",
+        "value": "base",
+        "min": null,
+        "max": null,
+        "softMin": null,
+        "softMax": null
+      }
+    ]
+  }
+}

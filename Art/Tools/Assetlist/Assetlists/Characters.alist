@@ -1,0 +1,29 @@
+{
+  "characters_male_base": {
+    "category": "Characters",
+    "faction": "",
+    "name": "Male_Base",
+    "path": "Characters/Players/Male_Base",
+    "subtype": "Players",
+    "description": "Default male base character. The starting skeleton and body every player rig is built from.",
+    "image": "",
+    "gender": "",
+    "engine_path": "",
+    "skeleton": "",
+    "body_type": "",
+    "asset_type": "SkeletalMesh",
+    "additional_types": [],
+    "slot": "",
+    "built_for": "",
+    "textures": [],
+    "engine_textures": [],
+    "materials": [],
+    "decals": [],
+    "dyes": [],
+    "attach_sockets": [],
+    "dye_overrides": {},
+    "path_flags": {},
+    "path_order": [],
+    "variant_of": ""
+  }
+}

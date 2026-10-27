@@ -1,0 +1,11 @@
+format: 1
+id: re_animator_4e4942
+name: Re-Animator
+items:
+- id: re_animator_837353
+  type: panel
+  name: Re-Animator
+  tooltip: Tools dedicated to Re-Animator
+  command:
+    kind: callable
+    target: mca.mya.tools.reanimator.reanimator_small:ReanimatorSmall

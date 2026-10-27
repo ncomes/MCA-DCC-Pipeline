@@ -1,0 +1,11 @@
+format: 1
+id: summoner_26fdcb
+name: Summoner
+items:
+- id: summoner_3ae0c0
+  type: button
+  name: Summoner
+  tooltip: Summoner - Import/Export Asset Tool
+  command:
+    kind: callable
+    target: mca.mya.tools.summoner.summoner:SummonerUI
