@@ -87,24 +87,38 @@ def project_root():
 #:
 #: The depot keeps them one level down - ``<common tools>/Tools/Assetlist`` - so the name
 #: is here rather than spelled into the path builders.
-COMMON_TOOLS_SUBFOLDER = 'Tools'
+# Where the shared tools sat before ``MCA_COMMON_TOOLS`` existed: under the project root,
+# in the layout the original depot used. Still on disk in every project made that way.
+LEGACY_COMMON_TOOLS_PARTS = ('Tools', 'Common', 'Tools')
 
 
 def get_common_tools_path():
     """
     The project's shared tools folder - where the asset list lives.
 
-    Built from the ``MCA_COMMON_TOOLS`` preference the launcher collects, not from the
-    project root. The version this replaces returned
-    ``<project root>/Tools/Common/Tools``, which happens to be right for a depot laid out
-    like the original one and wrong for every other project - so a path set in the
-    launcher was ignored and the asset list was looked for in a folder nobody made.
+    The ``MCA_COMMON_TOOLS`` preference the launcher collects decides this. The version
+    this replaces returned ``<project root>/Tools/Common/Tools`` and nothing else, which
+    is right for a depot laid out like the original one and wrong for every other project
+    - so a path set in the launcher was ignored and the asset list was looked for in a
+    folder nobody had made.
 
-    :return: The folder, or '' when the preference is not set.
+    That old path stays as the fallback, which is the part worth keeping: it is not only a
+    hardcode, it is also what every project built before the preference existed still has
+    on disk. Answering '' without it leaves a machine that has a project root but no
+    preference with no asset list at all, reported as "there is no project" - which is
+    true of nothing the user can see.
+
+    The preference is the folder itself, not its parent: ``save_project(common_tools=...)``
+    takes "the shared tools folder", and :func:`get_common_path` - the base for Face,
+    Skinning, Sounds and Skeletons - is the same folder. Appending anything to it puts
+    the asset list one level too deep.
+
+    :return: The folder, or '' when neither the preference nor a project root is set.
     :rtype: str
     """
 
-    return under(get_common_path(), COMMON_TOOLS_SUBFOLDER)
+    return get_common_path() or from_env(consts.MCA_PROJECT_ROOT,
+                                         *LEGACY_COMMON_TOOLS_PARTS)
 
 
 def get_common_path():
